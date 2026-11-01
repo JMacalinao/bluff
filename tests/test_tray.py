@@ -59,3 +59,12 @@ def test_hosts_show_as_radio_items_and_switch_on_click() -> None:
 
     asyncio.run(click())
     assert used == ["/b"]
+
+
+def test_connection_follows_hosts_when_known() -> None:
+    tray, peripheral, _ = make_tray()
+    peripheral.mouse.notifying = True
+    peripheral.hosts.hosts = {"/a": Host("/a", "iPad", blocked=False, connected=False)}
+    assert tray.icon() == "disconnected"
+    peripheral.hosts.hosts["/a"].connected = True
+    assert tray.icon() == "laptop"

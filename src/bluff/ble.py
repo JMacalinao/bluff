@@ -246,6 +246,9 @@ class Peripheral:
 
     @property
     def connected(self) -> bool:
+        # BlueZ keeps a bonded host's subscription across disconnects, so StopNotify never comes for it.
+        if self.hosts.hosts:
+            return any(host.connected and not host.blocked for host in self.hosts.hosts.values())
         return self.keyboard.notifying or self.mouse.notifying
 
     @property
