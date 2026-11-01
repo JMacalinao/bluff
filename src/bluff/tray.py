@@ -3,8 +3,11 @@
 import asyncio
 import logging
 import os
+import struct
 from collections.abc import Coroutine
 from enum import IntEnum
+from functools import cache
+from importlib.resources import files
 from typing import Annotated, Any
 
 from dbus_fast import DBusError, Message, MessageType, Variant
@@ -29,6 +32,20 @@ PROMPT_SECONDS = 60
 Props = dict[str, Variant]
 Layout = Annotated[list[Any], DBusSignature("u(ia{sv}av)")]
 ToolTipStruct = Annotated[list[Any], DBusSignature("(sa(iiay)ss)")]
+Pixmaps = Annotated[list[Any], DBusSignature("a(iiay)")]
+
+
+@cache
+def pixmaps(state: str) -> list[list[Any]]:
+    """Tray pixmaps for a state, as built by brandkit/build.py: frames of (width, height, ARGB32)."""
+    data = files("bluff").joinpath("icons", f"tray-{state}.argb").read_bytes()
+    frames, offset = [], 0
+    while offset < len(data):
+        width, height = struct.unpack_from(">II", data, offset)
+        size = width * height * 4
+        frames.append([width, height, data[offset + 8 : offset + 8 + size]])
+        offset += 8 + size
+    return frames
 
 
 class Item(IntEnum):
@@ -61,11 +78,15 @@ class StatusNotifierItem(ServiceInterface):
 
     @dbus_property(access=PropertyAccess.READ)
     def IconName(self) -> DBusStr:
-        return self._tray.icon()
+        return ""
+
+    @dbus_property(access=PropertyAccess.READ)
+    def IconPixmap(self) -> Pixmaps:
+        return pixmaps(self._tray.icon())
 
     @dbus_property(access=PropertyAccess.READ)
     def ToolTip(self) -> ToolTipStruct:
-        return [self._tray.icon(), [], "bluff", self._tray.summary()]
+        return ["", pixmaps(self._tray.icon()), "bluff", self._tray.summary()]
 
     @dbus_property(access=PropertyAccess.READ)
     def Menu(self) -> DBusObjectPath:
@@ -198,10 +219,10 @@ class Tray:
 
     def icon(self) -> str:
         if self.peripheral.pairing:
-            return "bluetooth-active"
+            return "pairing"
         if not self.peripheral.connected:
-            return "bluetooth-disabled"
-        return "input-tablet" if self.bridge.active else "input-keyboard"
+            return "disconnected"
+        return "ipad" if self.bridge.active else "laptop"
 
     def summary(self) -> str:
         if self.peripheral.pairing:
@@ -287,7 +308,7 @@ class Tray:
             return False
         actions = ["accept", "Accept", "reject", "Reject"]
         hints = {"urgency": Variant("y", 2)}
-        body = ["bluff", 0, "bluetooth-active", "Pair with bluff?", question, actions, hints, 0]
+        body = ["bluff", 0, "", "Pair with bluff?", question, actions, hints, 0]
         [notification] = await call(self._bus, NOTIFICATIONS, "/org/freedesktop/Notifications", NOTIFICATIONS,
                                     "Notify", "susssasa{sv}i", body)  # fmt: skip
         future = self._prompts[notification] = asyncio.get_running_loop().create_future()
