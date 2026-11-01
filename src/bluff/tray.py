@@ -267,7 +267,7 @@ class Tray:
             case Item.QUIT:
                 self._quit.set()
             case _ if 0 <= item - FIRST_HOST_ITEM < len(hosts := self._hosts()):
-                self._spawn(self.peripheral.hosts.use(hosts[item - FIRST_HOST_ITEM].path))
+                self.peripheral.hosts.use(hosts[item - FIRST_HOST_ITEM].path)
 
     async def start(self) -> None:
         bus = self._bus = await MessageBus().connect()

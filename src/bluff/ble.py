@@ -2,8 +2,9 @@
 
 import asyncio
 import logging
+import socket
 from collections.abc import Awaitable, Callable
-from typing import Annotated
+from typing import Annotated, Any
 
 from dbus_fast import BusType, DBusError, Variant
 from dbus_fast.aio import MessageBus
@@ -13,7 +14,7 @@ from dbus_fast.service import ServiceInterface, dbus_method, dbus_property
 
 from bluff.bus import call
 from bluff.hid import KEYBOARD_ID, MOUSE_ID, REPORT_MAP
-from bluff.hosts import Hosts
+from bluff.hosts import Host, Hosts
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,7 @@ APPEARANCE_KEYBOARD = 0x03C1
 # Report flags force an encrypted link, which is what makes iPadOS bond.
 SECURE_READ = ["encrypt-read"]
 SECURE_NOTIFY = ["encrypt-read", "notify"]
+RESUBSCRIBE_SECONDS = 5
 
 
 def _read(value: bytes, options: dict[str, Variant]) -> bytes:
@@ -103,6 +105,67 @@ class GattCharacteristic(ServiceInterface):
         self.notifying = False
         if self.listener:
             self.listener()
+
+
+class ReportCharacteristic(GattCharacteristic):
+    """Input report delivered to one host at a time.
+
+    Changing `Value` would notify every subscribed host. Exposing `NotifyAcquired`
+    makes BlueZ call `AcquireNotify` once per subscribing host instead, with the
+    host's device path, and send whatever is written to that host's socket to
+    that host only.
+    """
+
+    def __init__(self, service: GattService, index: int) -> None:
+        super().__init__(service, index, "2a4d", SECURE_NOTIFY)
+        self.sockets: dict[str, socket.socket] = {}
+        self.target: Callable[[], str | None] = lambda: None
+
+    def notify(self, value: bytes) -> None:
+        """Send `value` to the target host, or to every host when there is no target."""
+        self.value = value
+        target = self.target()
+        for device, sock in list(self.sockets.items()):
+            if target is None or device == target:
+                try:
+                    sock.send(value)
+                except OSError as error:
+                    logger.warning("dropping %s from %s: %s", device, self.path, error)
+                    self._drop(device, sock)
+
+    @dbus_property(access=PropertyAccess.READ)
+    def NotifyAcquired(self) -> DBusBool:
+        return bool(self.sockets)
+
+    @dbus_method()
+    def AcquireNotify(self, options: Options) -> Annotated[list[Any], DBusSignature("hq")]:
+        return list(self.acquire(options["device"].value, options["mtu"].value if "mtu" in options else 23))
+
+    def acquire(self, device: str, mtu: int) -> tuple[int, int]:
+        """Open a socket for `device` and return BlueZ's end with the MTU."""
+        ours, theirs = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+        if device in self.sockets:
+            self._drop(device, self.sockets[device])
+        self.sockets[device] = ours
+        loop = asyncio.get_running_loop()
+        # BlueZ never writes to a notify socket, so readable means it hung up.
+        loop.add_reader(ours.fileno(), self._drop, device, ours)
+        # shortcut: dbus_fast sends the fd after this returns, so our copy closes a little later
+        # (BlueZ's hangup only reaches us once it is closed); hook into the send if 5 s ever races.
+        loop.call_later(5, theirs.close)
+        logger.info("host %s subscribed to %s", device, self.path)
+        if self.listener:
+            self.listener()
+        return theirs.fileno(), mtu
+
+    def _drop(self, device: str, sock: socket.socket) -> None:
+        asyncio.get_running_loop().remove_reader(sock.fileno())
+        sock.close()
+        if self.sockets.get(device) is sock:
+            del self.sockets[device]
+            logger.info("host %s unsubscribed from %s", device, self.path)
+            if self.listener:
+                self.listener()
 
 
 class GattDescriptor(ServiceInterface):
@@ -217,9 +280,10 @@ class Peripheral:
         self._objects: list[GattObject] = []
         self.on_subscription_change: Callable[[], None] = lambda: None
         self.hosts = Hosts(self.adapter_path)
-        self.hosts.on_change = self._hosts_changed
-        self._advertising: tuple[bool, bool] | None = None
-        self._advertising_lock = asyncio.Lock()
+        self.hosts.on_change = lambda: self.on_subscription_change()
+        self.hosts.on_connect = self._host_connected
+        self._advertising = False
+        self._register_lock = asyncio.Lock()
         self._tasks: set[asyncio.Task[None]] = set()
         self._agent.on_accept = self.hosts.accepted
         self.keyboard, self.mouse = self._build()
@@ -228,7 +292,7 @@ class Peripheral:
         self._objects.append(obj)
         return obj
 
-    def _build(self) -> tuple[GattCharacteristic, GattCharacteristic]:
+    def _build(self) -> tuple[ReportCharacteristic, ReportCharacteristic]:
         hid = self._add(GattService(f"{ROOT}/service0", "1812"))
         self._add(
             GattCharacteristic(hid, 0, "2a4a", ["read"], bytes([0x11, 0x01, 0x00, 0x02]))
@@ -237,9 +301,10 @@ class Peripheral:
         self._add(GattCharacteristic(hid, 2, "2a4c", ["write-without-response"]))
         reports = []
         for index, report_id in enumerate((KEYBOARD_ID, MOUSE_ID), start=3):
-            report = self._add(GattCharacteristic(hid, index, "2a4d", SECURE_NOTIFY))
+            report = self._add(ReportCharacteristic(hid, index))
             self._add(GattDescriptor(report, "2908", bytes([report_id, 1])))  # Report Reference: input
             report.listener = lambda: self.on_subscription_change()
+            report.target = self._target
             reports.append(report)
         battery = self._add(GattService(f"{ROOT}/service1", "180f"))
         self._add(GattCharacteristic(battery, 0, "2a19", ["read", "notify"], bytes([100])))
@@ -248,12 +313,15 @@ class Peripheral:
         self._add(GattCharacteristic(info, 0, "2a50", ["read"], bytes([0x02, 0x6B, 0x1D, 0x46, 0x42, 0x00, 0x01])))
         return reports[0], reports[1]
 
+    def _target(self) -> str | None:
+        chosen = self.hosts.chosen
+        return chosen.path if chosen else None
+
     @property
     def connected(self) -> bool:
-        # BlueZ keeps a bonded host's subscription across disconnects, so StopNotify never comes for it.
-        if self.hosts.hosts:
-            return any(host.connected for host in self.hosts.hosts.values())
-        return self.keyboard.notifying or self.mouse.notifying
+        """Whether input sent now reaches a host: the chosen one, or any when none is chosen."""
+        target = self._target()
+        return any(target is None or device == target for device in self.keyboard.sockets)
 
     @property
     def pairing(self) -> bool:
@@ -265,36 +333,39 @@ class Peripheral:
         await self._update_advertising()
         logger.info("pairing mode %s", "on" if confirm else "off")
 
-    def _hosts_changed(self) -> None:
-        task = asyncio.create_task(self._update_advertising())
+    def _host_connected(self, host: Host) -> None:
+        task = asyncio.create_task(self._resubscribe(host))
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
-        self.on_subscription_change()
+
+    async def _resubscribe(self, host: Host) -> None:
+        # A bonded host keeps its subscription inside BlueZ across disconnects, so when it comes
+        # back BlueZ sees nothing new and never calls AcquireNotify. Registering the app again
+        # drops those subscriptions; connected hosts get Service Changed and subscribe again.
+        await asyncio.sleep(RESUBSCRIBE_SECONDS)
+        async with self._register_lock:
+            if self._bus is None or not host.connected or host.path in self.keyboard.sockets:
+                return
+            logger.info("%r is back without subscribing; registering again so it does", host.name)
+            gatt = "org.bluez.GattManager1"
+            await call(self._bus, "org.bluez", self.adapter_path, gatt, "UnregisterApplication", "o", [ROOT])
+            await call(self._bus, "org.bluez", self.adapter_path, gatt, "RegisterApplication", "oa{sv}", [ROOT, {}])
 
     async def _update_advertising(self) -> None:
-        # Once the chosen host is connected nobody else needs to find bluff, and a disconnected
-        # host that cannot see bluff waits quietly instead of reconnecting. Without known hosts
-        # `connected` cannot tell a disconnect, so keep advertising then.
-        async with self._advertising_lock:
-            wanted = self.pairing or not self.hosts.hosts or not self.hosts.settled
-            bus, state = self._bus, (wanted, self.pairing)
-            if bus is None or state == self._advertising:
-                return
-            manager = "org.bluez.LEAdvertisingManager1"
-            if self._advertising and self._advertising[0]:
-                await call(
-                    bus, "org.bluez", self.adapter_path, manager, "UnregisterAdvertisement", "o", [ADVERTISEMENT]
-                )
-                bus.unexport(ADVERTISEMENT)
-            if wanted:
-                bus.export(ADVERTISEMENT, Advertisement(self.name, discoverable=self.pairing))
-                await call(bus, "org.bluez", self.adapter_path, manager, "RegisterAdvertisement", "oa{sv}",
-                           [ADVERTISEMENT, {}])  # fmt: skip
-            self._advertising = state
-            logger.info("advertising %s", "on" if wanted else "off while a host is connected")
+        if self._bus is None:
+            return
+        manager = "org.bluez.LEAdvertisingManager1"
+        if self._advertising:
+            await call(self._bus, "org.bluez", self.adapter_path, manager, "UnregisterAdvertisement", "o",
+                       [ADVERTISEMENT])  # fmt: skip
+            self._bus.unexport(ADVERTISEMENT)
+        self._bus.export(ADVERTISEMENT, Advertisement(self.name, discoverable=self.pairing))
+        await call(self._bus, "org.bluez", self.adapter_path, manager, "RegisterAdvertisement", "oa{sv}",
+                   [ADVERTISEMENT, {}])  # fmt: skip
+        self._advertising = True
 
     async def start(self) -> None:
-        bus = self._bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
+        bus = self._bus = await MessageBus(bus_type=BusType.SYSTEM, negotiate_unix_fd=True).connect()
         for obj in self._objects:
             bus.export(obj.path, obj)
         bus.export(AGENT, self._agent)
@@ -309,5 +380,8 @@ class Peripheral:
             bus, "org.bluez", self.adapter_path, "org.bluez.GattManager1", "RegisterApplication", "oa{sv}", [ROOT, {}]
         )
         await self.hosts.start(bus)
+        for host in self.hosts.hosts.values():
+            if host.connected:
+                self._host_connected(host)
         await self._update_advertising()
         logger.info("registered as %r on %s", self.name, self.adapter_path)

@@ -65,31 +65,26 @@ def test_only_stored_addresses_become_hosts(tmp_path: Path) -> None:
     assert sorted(host.name for host in hosts.hosts.values()) == ["Fold", "iPad"]
 
 
-@pytest.mark.asyncio
-async def test_choosing_a_connected_host_disconnects_the_others(tmp_path: Path) -> None:
+def test_use_stores_the_choice(tmp_path: Path) -> None:
     bus = FakeBus({IPAD: device("34:EE:16:4F:E0:BD", "iPad"), PHONE: device("8C:A3:EC:B6:17:1D", "Fold")})
     hosts = make_hosts(tmp_path, bus)
-    await hosts.use(PHONE)
-    assert bus.calls == [(IPAD, "Disconnect")]
+    hosts.use(PHONE)
+    assert hosts.chosen is not None and hosts.chosen.path == PHONE
     assert (tmp_path / "chosen").read_text() == "8C:A3:EC:B6:17:1D\n"
-
-
-@pytest.mark.asyncio
-async def test_the_old_host_stays_until_the_chosen_one_connects(tmp_path: Path) -> None:
-    bus = FakeBus({IPAD: device("34:EE:16:4F:E0:BD", "iPad"), PHONE: device("8C:A3:EC:B6:17:1D", "Fold", False)})
-    hosts = make_hosts(tmp_path, bus)
-    await hosts.use(PHONE)
     assert bus.calls == []
-    assert not hosts.settled
 
+
+def test_reconnect_is_reported(tmp_path: Path) -> None:
+    bus = FakeBus({PHONE: device("8C:A3:EC:B6:17:1D", "Fold", False)})
+    hosts = make_hosts(tmp_path, bus)
+    connects: list[str] = []
+    hosts.on_connect = lambda host: connects.append(host.name)
     hosts._on_signal(changed(PHONE, Connected=Variant("b", True)))
-    await next(iter(hosts._tasks))
-    assert bus.calls == [(IPAD, "Disconnect")]
-    assert hosts.settled
+    hosts._on_signal(changed(PHONE, Alias=Variant("s", "Fold")))
+    assert connects == ["Fold"]
 
 
-@pytest.mark.asyncio
-async def test_signals_update_known_hosts_only(tmp_path: Path) -> None:
+def test_signals_update_known_hosts_only(tmp_path: Path) -> None:
     bus = FakeBus({IPAD: device("34:EE:16:4F:E0:BD", "iPad")})
     hosts = make_hosts(tmp_path, bus, chosen="34:EE:16:4F:E0:BD")
     changes: list[None] = []
@@ -116,4 +111,3 @@ async def test_new_pairing_is_stored_and_chosen(tmp_path: Path) -> None:
 
     assert store.read_text() == "34:EE:16:4F:E0:BD\n8C:A3:EC:B6:17:1D\n"
     assert hosts.chosen_address == "8C:A3:EC:B6:17:1D"
-    assert bus.calls == [(IPAD, "Disconnect")]

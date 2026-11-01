@@ -1,3 +1,4 @@
+import socket
 from pathlib import Path
 from typing import cast
 
@@ -35,9 +36,10 @@ async def test_hotkey_toggles_after_release_only_when_subscribed() -> None:
     press(bridge, device, "LEFTCTRL", "LEFTALT")
     assert not bridge.active
 
-    peripheral.keyboard.notifying = True
+    peripheral.keyboard.sockets["/a"] = cast(socket.socket, None)
     press(bridge, device, "LEFTCTRL", "LEFTALT")
     assert bridge.active and device.grabbed
 
-    peripheral.keyboard.StopNotify()
+    peripheral.keyboard.sockets.clear()
+    peripheral.on_subscription_change()
     assert not bridge.active and not device.grabbed

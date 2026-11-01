@@ -1,9 +1,13 @@
 import asyncio
+import socket
+from typing import cast
 
 from bluff.ble import Peripheral
 from bluff.bridge import Bridge
 from bluff.hosts import Host
 from bluff.tray import FIRST_HOST_ITEM, Item, Tray, pixmaps
+
+SOCKET = cast(socket.socket, None)
 
 
 def make_tray() -> tuple[Tray, Peripheral, asyncio.Event]:
@@ -18,7 +22,7 @@ def test_icon_and_menu_follow_connection() -> None:
     toggle = dict(tray.menu())[Item.TOGGLE]
     assert toggle["enabled"] == ("b", False)
 
-    peripheral.mouse.notifying = True
+    peripheral.keyboard.sockets["/a"] = SOCKET
     assert tray.icon() == "laptop"
     assert dict(tray.menu())[Item.TOGGLE]["enabled"] == ("b", True)
 
@@ -44,7 +48,7 @@ def test_hosts_show_as_radio_items_and_switch_on_click() -> None:
     }
     used: list[str] = []
 
-    async def use(path: str) -> None:
+    def use(path: str) -> None:
         used.append(path)
 
     peripheral.hosts.use = use
@@ -54,18 +58,18 @@ def test_hosts_show_as_radio_items_and_switch_on_click() -> None:
     assert items[FIRST_HOST_ITEM]["toggle-state"] == ("i", 1)
     assert items[FIRST_HOST_ITEM + 1]["toggle-state"] == ("i", 0)
 
-    async def click() -> None:
-        tray.clicked(FIRST_HOST_ITEM + 1)
-        await asyncio.gather(*tray._tasks)
-
-    asyncio.run(click())
+    tray.clicked(FIRST_HOST_ITEM + 1)
     assert used == ["/b"]
 
 
-def test_connection_follows_hosts_when_known() -> None:
+def test_connection_means_the_chosen_host_is_subscribed() -> None:
     tray, peripheral, _ = make_tray()
-    peripheral.mouse.notifying = True
-    peripheral.hosts.hosts = {"/a": Host("/a", "A", "iPad", connected=False)}
+    peripheral.hosts.hosts = {
+        "/a": Host("/a", "A", "iPad", connected=True),
+        "/b": Host("/b", "B", "Fold", connected=True),
+    }
+    peripheral.hosts.chosen_address = "A"
+    peripheral.keyboard.sockets["/b"] = SOCKET
     assert tray.icon() == "disconnected"
-    peripheral.hosts.hosts["/a"].connected = True
+    peripheral.keyboard.sockets["/a"] = SOCKET
     assert tray.icon() == "laptop"

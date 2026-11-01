@@ -1,8 +1,9 @@
-from typing import cast
+import asyncio
+import os
+import socket
 
 import pytest
-from dbus_fast import DBusError, Message
-from dbus_fast.aio import MessageBus
+from dbus_fast import DBusError
 
 from bluff.ble import Agent, Peripheral
 from bluff.hosts import Host
@@ -30,29 +31,31 @@ async def test_agent_asks_confirm_in_pairing_mode() -> None:
 
 
 @pytest.mark.asyncio
-async def test_advertises_only_while_no_known_host_is_connected() -> None:
-    calls: list[str] = []
-
-    class Bus:
-        async def call(self, message: Message) -> None:
-            calls.append(message.member or "")
-
-        def export(self, path: str, interface: object) -> None:
-            pass
-
-        def unexport(self, path: str) -> None:
-            pass
-
+async def test_reports_go_only_to_the_chosen_host() -> None:
     peripheral = Peripheral("test")
-    peripheral._bus = cast(MessageBus, Bus())
-    await peripheral._update_advertising()
-    assert calls == ["RegisterAdvertisement"]
+    peripheral.hosts.hosts = {"/a": Host("/a", "A", "iPad", True), "/b": Host("/b", "B", "Fold", True)}
+    peripheral.hosts.chosen_address = "B"
+    ipad, ipad_bluez = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+    fold, fold_bluez = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+    peripheral.keyboard.sockets = {"/a": ipad, "/b": fold}
+    ipad_bluez.setblocking(False)
 
-    peripheral.hosts.hosts = {"/a": Host("/a", "A", "iPad", connected=True)}
-    await peripheral._update_advertising()
-    await peripheral._update_advertising()
-    assert calls == ["RegisterAdvertisement", "UnregisterAdvertisement"]
+    peripheral.keyboard.notify(b"\x01")
+    assert fold_bluez.recv(8) == b"\x01"
+    with pytest.raises(BlockingIOError):
+        ipad_bluez.recv(8)
 
-    peripheral.hosts.hosts["/a"].connected = False
-    await peripheral._update_advertising()
-    assert calls[-1] == "RegisterAdvertisement"
+
+@pytest.mark.asyncio
+async def test_acquire_notify_hands_out_a_socket_until_bluez_hangs_up() -> None:
+    keyboard = Peripheral("test").keyboard
+    fd, mtu = keyboard.acquire("/a", 64)
+    assert mtu == 64
+    bluez = socket.socket(fileno=os.dup(fd))
+    keyboard.notify(b"\x02")
+    assert bluez.recv(8) == b"\x02"
+
+    bluez.close()
+    os.close(fd)
+    await asyncio.sleep(0.05)
+    assert keyboard.sockets == {}

@@ -44,12 +44,10 @@ request; a bonded device reconnects on its own. Without a tray, stop the
 service and run `bluff --pair` in a terminal to pair there instead.
 
 With more than one device paired, the tray menu lists them and input goes to
-the checked one. Once it connects, bluff disconnects the others and stops
-advertising, so they wait without retrying. Picking another device switches
-over once that device reconnects: about a second for an iPad, up to a minute
-for an Android phone. While the checked device is away, another paired device
-may connect and gets the input until it returns. A newly paired device becomes
-the checked one. bluff keeps the addresses of the devices it paired in
+the checked one only. All of them stay connected, so picking another device
+switches over at once. A newly paired device becomes the checked one. When a
+device reconnects, bluff may re-register its keyboard with BlueZ so the device
+subscribes again; any other connected device then pauses for a second or two. bluff keeps the addresses of the devices it paired in
 `~/.local/state/bluff/hosts`; devices paired before that file existed need
 their address added there by hand.
 
