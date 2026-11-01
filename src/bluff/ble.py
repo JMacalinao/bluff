@@ -131,7 +131,8 @@ class ReportCharacteristic(GattCharacteristic):
                     sock.send(value)
                 except OSError as error:
                     logger.warning("dropping %s from %s: %s", device, self.path, error)
-                    self._drop(device, sock)
+                    # Not from here: dropping tells the bridge, which may be sending this very report.
+                    asyncio.get_running_loop().call_soon(self._drop, device, sock)
 
     @dbus_property(access=PropertyAccess.READ)
     def NotifyAcquired(self) -> DBusBool:
@@ -159,8 +160,9 @@ class ReportCharacteristic(GattCharacteristic):
         return theirs.fileno(), mtu
 
     def _drop(self, device: str, sock: socket.socket) -> None:
-        asyncio.get_running_loop().remove_reader(sock.fileno())
-        sock.close()
+        if sock.fileno() != -1:
+            asyncio.get_running_loop().remove_reader(sock.fileno())
+            sock.close()
         if self.sockets.get(device) is sock:
             del self.sockets[device]
             logger.info("host %s unsubscribed from %s", device, self.path)

@@ -59,3 +59,18 @@ async def test_acquire_notify_hands_out_a_socket_until_bluez_hangs_up() -> None:
     os.close(fd)
     await asyncio.sleep(0.05)
     assert keyboard.sockets == {}
+
+
+@pytest.mark.asyncio
+async def test_a_failed_send_drops_the_host_after_the_send_returns() -> None:
+    keyboard = Peripheral("test").keyboard
+    changes: list[int] = []
+    keyboard.listener = lambda: changes.append(len(keyboard.sockets))
+    ours, bluez = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+    keyboard.sockets["/a"] = ours
+    bluez.close()
+
+    keyboard.notify(b"\x01")
+    assert "/a" in keyboard.sockets and changes == []
+    await asyncio.sleep(0)
+    assert keyboard.sockets == {} and changes == [0]
