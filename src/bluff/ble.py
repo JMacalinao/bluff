@@ -285,6 +285,7 @@ class Peripheral:
         self._advertising = False
         self._register_lock = asyncio.Lock()
         self._spare_exported = False
+        self._registered_at = -RESUBSCRIBE_SECONDS
         self._tasks: set[asyncio.Task[None]] = set()
         self._agent.on_accept = self.hosts.accepted
         self.keyboard, self.mouse = self._build()
@@ -349,6 +350,9 @@ class Peripheral:
         async with self._register_lock:
             if self._bus is None or not host.connected or host.path in self.keyboard.sockets:
                 return
+            # Hosts that came back together share one registration; a second toggle would undo it.
+            if asyncio.get_running_loop().time() - self._registered_at < RESUBSCRIBE_SECONDS:
+                return
             logger.info("%r is back without subscribing; registering again so it does", host.name)
             gatt = "org.bluez.GattManager1"
             await call(self._bus, "org.bluez", self.adapter_path, gatt, "UnregisterApplication", "o", [ROOT])
@@ -360,6 +364,7 @@ class Peripheral:
                 self._bus.export(self._spare.path, self._spare)
             self._spare_exported = not self._spare_exported
             await call(self._bus, "org.bluez", self.adapter_path, gatt, "RegisterApplication", "oa{sv}", [ROOT, {}])
+            self._registered_at = asyncio.get_running_loop().time()
 
     async def _update_advertising(self) -> None:
         if self._bus is None:
