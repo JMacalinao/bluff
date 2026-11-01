@@ -29,7 +29,9 @@ APPEARANCE_KEYBOARD = 0x03C1
 # Report flags force an encrypted link, which is what makes iPadOS bond.
 SECURE_READ = ["encrypt-read"]
 SECURE_NOTIFY = ["encrypt-read", "notify"]
-RESUBSCRIBE_SECONDS = 5
+RESUBSCRIBE_SECONDS = 10
+# At most one nudge per host in this long, so a host that never subscribes is not kicked forever.
+NUDGE_SECONDS = 120
 
 
 def _read(value: bytes, options: dict[str, Variant]) -> bytes:
@@ -288,6 +290,7 @@ class Peripheral:
         self._register_lock = asyncio.Lock()
         self._spare_exported = False
         self._registered_at = -RESUBSCRIBE_SECONDS
+        self._nudged: dict[str, float] = {}
         self._tasks: set[asyncio.Task[None]] = set()
         self._agent.on_accept = self.hosts.accepted
         self.keyboard, self.mouse = self._build()
@@ -367,6 +370,24 @@ class Peripheral:
             self._spare_exported = not self._spare_exported
             await call(self._bus, "org.bluez", self.adapter_path, gatt, "RegisterApplication", "oa{sv}", [ROOT, {}])
             self._registered_at = asyncio.get_running_loop().time()
+        await asyncio.sleep(RESUBSCRIBE_SECONDS)
+        await self._nudge_unsubscribed()
+
+    async def _nudge_unsubscribed(self) -> None:
+        # Android ignores Service Changed while connected and only rediscovers, and so
+        # subscribes, when it reconnects. A disconnect is not a rejection: it comes right back.
+        now = asyncio.get_running_loop().time()
+        for host in list(self.hosts.hosts.values()):
+            if self._bus is None or not host.connected or host.path in self.keyboard.sockets:
+                continue
+            if now - self._nudged.get(host.path, -NUDGE_SECONDS) < NUDGE_SECONDS:
+                continue
+            self._nudged[host.path] = now
+            logger.info("disconnecting %r so it reconnects and subscribes", host.name)
+            try:
+                await call(self._bus, "org.bluez", host.path, "org.bluez.Device1", "Disconnect")
+            except DBusError as error:
+                logger.warning("could not disconnect %r: %s", host.name, error.text)
 
     async def _update_advertising(self) -> None:
         if self._bus is None:

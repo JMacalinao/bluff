@@ -1,9 +1,11 @@
 import asyncio
 import os
 import socket
+from typing import cast
 
 import pytest
-from dbus_fast import DBusError
+from dbus_fast import DBusError, Message
+from dbus_fast.aio import MessageBus
 
 from bluff.ble import Agent, Peripheral
 from bluff.hosts import Host
@@ -74,3 +76,21 @@ async def test_a_failed_send_drops_the_host_after_the_send_returns() -> None:
     assert "/a" in keyboard.sockets and changes == []
     await asyncio.sleep(0)
     assert keyboard.sockets == {} and changes == [0]
+
+
+@pytest.mark.asyncio
+async def test_hosts_without_a_socket_are_disconnected_once() -> None:
+    calls: list[tuple[str, str]] = []
+
+    class Bus:
+        async def call(self, message: Message) -> None:
+            calls.append((message.path or "", message.member or ""))
+
+    peripheral = Peripheral("test")
+    peripheral._bus = cast(MessageBus, Bus())
+    peripheral.hosts.hosts = {"/a": Host("/a", "A", "iPad", True), "/b": Host("/b", "B", "Fold", True)}
+    peripheral.keyboard.sockets["/a"] = cast(socket.socket, None)
+
+    await peripheral._nudge_unsubscribed()
+    await peripheral._nudge_unsubscribed()
+    assert calls == [("/b", "Disconnect")]
