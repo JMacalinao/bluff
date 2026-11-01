@@ -1,0 +1,301 @@
+"""Linux keycode to HID keyboard usage, inverted from the kernel's hid_keyboard[] table."""
+
+USAGES: dict[int, int] = {
+    1: 0x29,  # ESC
+    2: 0x1E,  # 1
+    3: 0x1F,  # 2
+    4: 0x20,  # 3
+    5: 0x21,  # 4
+    6: 0x22,  # 5
+    7: 0x23,  # 6
+    8: 0x24,  # 7
+    9: 0x25,  # 8
+    10: 0x26,  # 9
+    11: 0x27,  # 0
+    12: 0x2D,  # MINUS
+    13: 0x2E,  # EQUAL
+    14: 0x2A,  # BACKSPACE
+    15: 0x2B,  # TAB
+    16: 0x14,  # Q
+    17: 0x1A,  # W
+    18: 0x08,  # E
+    19: 0x15,  # R
+    20: 0x17,  # T
+    21: 0x1C,  # Y
+    22: 0x18,  # U
+    23: 0x0C,  # I
+    24: 0x12,  # O
+    25: 0x13,  # P
+    26: 0x2F,  # LEFTBRACE
+    27: 0x30,  # RIGHTBRACE
+    28: 0x28,  # ENTER
+    29: 0xE0,  # LEFTCTRL
+    30: 0x04,  # A
+    31: 0x16,  # S
+    32: 0x07,  # D
+    33: 0x09,  # F
+    34: 0x0A,  # G
+    35: 0x0B,  # H
+    36: 0x0D,  # J
+    37: 0x0E,  # K
+    38: 0x0F,  # L
+    39: 0x33,  # SEMICOLON
+    40: 0x34,  # APOSTROPHE
+    41: 0x35,  # GRAVE
+    42: 0xE1,  # LEFTSHIFT
+    43: 0x31,  # BACKSLASH
+    44: 0x1D,  # Z
+    45: 0x1B,  # X
+    46: 0x06,  # C
+    47: 0x19,  # V
+    48: 0x05,  # B
+    49: 0x11,  # N
+    50: 0x10,  # M
+    51: 0x36,  # COMMA
+    52: 0x37,  # DOT
+    53: 0x38,  # SLASH
+    54: 0xE5,  # RIGHTSHIFT
+    55: 0x55,  # KPASTERISK
+    56: 0xE2,  # LEFTALT
+    57: 0x2C,  # SPACE
+    58: 0x39,  # CAPSLOCK
+    59: 0x3A,  # F1
+    60: 0x3B,  # F2
+    61: 0x3C,  # F3
+    62: 0x3D,  # F4
+    63: 0x3E,  # F5
+    64: 0x3F,  # F6
+    65: 0x40,  # F7
+    66: 0x41,  # F8
+    67: 0x42,  # F9
+    68: 0x43,  # F10
+    69: 0x53,  # NUMLOCK
+    70: 0x47,  # SCROLLLOCK
+    71: 0x5F,  # KP7
+    72: 0x60,  # KP8
+    73: 0x61,  # KP9
+    74: 0x56,  # KPMINUS
+    75: 0x5C,  # KP4
+    76: 0x5D,  # KP5
+    77: 0x5E,  # KP6
+    78: 0x57,  # KPPLUS
+    79: 0x59,  # KP1
+    80: 0x5A,  # KP2
+    81: 0x5B,  # KP3
+    82: 0x62,  # KP0
+    83: 0x63,  # KPDOT
+    85: 0x94,  # ZENKAKUHANKAKU
+    86: 0x64,  # 102ND
+    87: 0x44,  # F11
+    88: 0x45,  # F12
+    89: 0x87,  # RO
+    90: 0x92,  # KATAKANA
+    91: 0x93,  # HIRAGANA
+    92: 0x8A,  # HENKAN
+    93: 0x88,  # KATAKANAHIRAGANA
+    94: 0x8B,  # MUHENKAN
+    95: 0x8C,  # KPJPCOMMA
+    96: 0x58,  # KPENTER
+    97: 0xE4,  # RIGHTCTRL
+    98: 0x54,  # KPSLASH
+    99: 0x46,  # SYSRQ
+    100: 0xE6,  # RIGHTALT
+    102: 0x4A,  # HOME
+    103: 0x52,  # UP
+    104: 0x4B,  # PAGEUP
+    105: 0x50,  # LEFT
+    106: 0x4F,  # RIGHT
+    107: 0x4D,  # END
+    108: 0x51,  # DOWN
+    109: 0x4E,  # PAGEDOWN
+    110: 0x49,  # INSERT
+    111: 0x4C,  # DELETE
+    113: 0x7F,  # MUTE
+    114: 0x81,  # VOLUMEDOWN
+    115: 0x80,  # VOLUMEUP
+    116: 0x66,  # POWER
+    117: 0x67,  # KPEQUAL
+    119: 0x48,  # PAUSE
+    121: 0x85,  # KPCOMMA
+    122: 0x90,  # HANGEUL
+    123: 0x91,  # HANJA
+    124: 0x89,  # YEN
+    125: 0xE3,  # LEFTMETA
+    126: 0xE7,  # RIGHTMETA
+    127: 0x65,  # COMPOSE
+    128: 0x78,  # STOP
+    129: 0x79,  # AGAIN
+    130: 0x76,  # PROPS
+    131: 0x7A,  # UNDO
+    132: 0x77,  # FRONT
+    133: 0x7C,  # COPY
+    134: 0x74,  # OPEN
+    135: 0x7D,  # PASTE
+    136: 0x7E,  # FIND
+    137: 0x7B,  # CUT
+    138: 0x75,  # HELP
+    179: 0xB6,  # KPLEFTPAREN
+    180: 0xB7,  # KPRIGHTPAREN
+    183: 0x68,  # F13
+    184: 0x69,  # F14
+    185: 0x6A,  # F15
+    186: 0x6B,  # F16
+    187: 0x6C,  # F17
+    188: 0x6D,  # F18
+    189: 0x6E,  # F19
+    190: 0x6F,  # F20
+    191: 0x70,  # F21
+    192: 0x71,  # F22
+    193: 0x72,  # F23
+    194: 0x73,  # F24
+}
+
+KEYCODES: dict[str, int] = {
+    "ESC": 1,
+    "1": 2,
+    "2": 3,
+    "3": 4,
+    "4": 5,
+    "5": 6,
+    "6": 7,
+    "7": 8,
+    "8": 9,
+    "9": 10,
+    "0": 11,
+    "MINUS": 12,
+    "EQUAL": 13,
+    "BACKSPACE": 14,
+    "TAB": 15,
+    "Q": 16,
+    "W": 17,
+    "E": 18,
+    "R": 19,
+    "T": 20,
+    "Y": 21,
+    "U": 22,
+    "I": 23,
+    "O": 24,
+    "P": 25,
+    "LEFTBRACE": 26,
+    "RIGHTBRACE": 27,
+    "ENTER": 28,
+    "LEFTCTRL": 29,
+    "A": 30,
+    "S": 31,
+    "D": 32,
+    "F": 33,
+    "G": 34,
+    "H": 35,
+    "J": 36,
+    "K": 37,
+    "L": 38,
+    "SEMICOLON": 39,
+    "APOSTROPHE": 40,
+    "GRAVE": 41,
+    "LEFTSHIFT": 42,
+    "BACKSLASH": 43,
+    "Z": 44,
+    "X": 45,
+    "C": 46,
+    "V": 47,
+    "B": 48,
+    "N": 49,
+    "M": 50,
+    "COMMA": 51,
+    "DOT": 52,
+    "SLASH": 53,
+    "RIGHTSHIFT": 54,
+    "KPASTERISK": 55,
+    "LEFTALT": 56,
+    "SPACE": 57,
+    "CAPSLOCK": 58,
+    "F1": 59,
+    "F2": 60,
+    "F3": 61,
+    "F4": 62,
+    "F5": 63,
+    "F6": 64,
+    "F7": 65,
+    "F8": 66,
+    "F9": 67,
+    "F10": 68,
+    "NUMLOCK": 69,
+    "SCROLLLOCK": 70,
+    "KP7": 71,
+    "KP8": 72,
+    "KP9": 73,
+    "KPMINUS": 74,
+    "KP4": 75,
+    "KP5": 76,
+    "KP6": 77,
+    "KPPLUS": 78,
+    "KP1": 79,
+    "KP2": 80,
+    "KP3": 81,
+    "KP0": 82,
+    "KPDOT": 83,
+    "ZENKAKUHANKAKU": 85,
+    "102ND": 86,
+    "F11": 87,
+    "F12": 88,
+    "RO": 89,
+    "KATAKANA": 90,
+    "HIRAGANA": 91,
+    "HENKAN": 92,
+    "KATAKANAHIRAGANA": 93,
+    "MUHENKAN": 94,
+    "KPJPCOMMA": 95,
+    "KPENTER": 96,
+    "RIGHTCTRL": 97,
+    "KPSLASH": 98,
+    "SYSRQ": 99,
+    "RIGHTALT": 100,
+    "HOME": 102,
+    "UP": 103,
+    "PAGEUP": 104,
+    "LEFT": 105,
+    "RIGHT": 106,
+    "END": 107,
+    "DOWN": 108,
+    "PAGEDOWN": 109,
+    "INSERT": 110,
+    "DELETE": 111,
+    "MUTE": 113,
+    "VOLUMEDOWN": 114,
+    "VOLUMEUP": 115,
+    "POWER": 116,
+    "KPEQUAL": 117,
+    "PAUSE": 119,
+    "KPCOMMA": 121,
+    "HANGEUL": 122,
+    "HANJA": 123,
+    "YEN": 124,
+    "LEFTMETA": 125,
+    "RIGHTMETA": 126,
+    "COMPOSE": 127,
+    "STOP": 128,
+    "AGAIN": 129,
+    "PROPS": 130,
+    "UNDO": 131,
+    "FRONT": 132,
+    "COPY": 133,
+    "OPEN": 134,
+    "PASTE": 135,
+    "FIND": 136,
+    "CUT": 137,
+    "HELP": 138,
+    "KPLEFTPAREN": 179,
+    "KPRIGHTPAREN": 180,
+    "F13": 183,
+    "F14": 184,
+    "F15": 185,
+    "F16": 186,
+    "F17": 187,
+    "F18": 188,
+    "F19": 189,
+    "F20": 190,
+    "F21": 191,
+    "F22": 192,
+    "F23": 193,
+    "F24": 194,
+}

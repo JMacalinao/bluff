@@ -1,0 +1,16 @@
+version: 1
+disable_existing_loggers: false
+formatters:
+  plain:
+    format: "%(asctime)s %(levelname)-7s %(name)s: %(message)s"
+    datefmt: "%H:%M:%S"
+handlers:
+  console:
+    class: logging.StreamHandler
+    formatter: plain
+    stream: ext://sys.stderr
+loggers:
+  bluff:
+    level: INFO
+    handlers: [console]
+    propagate: false

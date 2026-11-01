@@ -1,0 +1,40 @@
+[project]
+name = "bluff"
+version = "0.1.0"
+description = "Turn a Linux laptop into a Bluetooth keyboard and mouse for an iPad"
+readme = "README.md"
+authors = [
+    { name = "kascoord", email = "kascoord@localhost" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "dbus-fast>=5.2.0",
+    "pyyaml>=6.0.3",
+]
+
+[project.scripts]
+bluff = "bluff:main"
+
+[build-system]
+requires = ["uv_build>=0.13.5,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1.414",
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.4.1",
+    "ruff>=0.17.3",
+]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+extend-select = ["I", "UP", "B"]
+
+[tool.pyright]
+typeCheckingMode = "basic"
+
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"
