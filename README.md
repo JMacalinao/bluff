@@ -45,10 +45,11 @@ service and run `bluff --pair` in a terminal to pair there instead.
 
 With more than one device paired, the tray menu lists them and only the
 checked one may connect. bluff blocks the others in BlueZ, which keeps their
-pairing, so picking another device switches over within a few seconds. A newly
-paired device becomes the checked one. bluff keeps the addresses of the
-devices it paired in `~/.local/state/bluff/hosts`; devices paired before that
-file existed need their address added there by hand.
+pairing, so picking another device switches over by itself: about a second for
+an iPad, up to a minute for an Android phone. A newly paired device becomes
+the checked one. bluff keeps the addresses of the devices it paired in
+`~/.local/state/bluff/hosts`; devices paired before that file existed need
+their address added there by hand.
 
 After pulling changes: `uv tool install --reinstall .` and
 `systemctl --user restart bluff`. Logs: `journalctl --user -u bluff -f`.
