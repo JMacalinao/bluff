@@ -39,8 +39,8 @@ def test_every_state_has_pixmaps() -> None:
 def test_hosts_show_as_radio_items_and_switch_on_click() -> None:
     tray, peripheral, _ = make_tray()
     peripheral.hosts.hosts = {
-        "/b": Host("/b", "iPad", blocked=True, connected=False),
-        "/a": Host("/a", "Fold", blocked=False, connected=True),
+        "/b": Host("/b", "B", "iPad", connected=False),
+        "/a": Host("/a", "A", "Fold", connected=True),
     }
     used: list[str] = []
 
@@ -48,6 +48,7 @@ def test_hosts_show_as_radio_items_and_switch_on_click() -> None:
         used.append(path)
 
     peripheral.hosts.use = use
+    peripheral.hosts.chosen_address = "A"
     items = dict(tray.menu())
     assert items[FIRST_HOST_ITEM]["label"] == ("s", "Fold")
     assert items[FIRST_HOST_ITEM]["toggle-state"] == ("i", 1)
@@ -64,7 +65,7 @@ def test_hosts_show_as_radio_items_and_switch_on_click() -> None:
 def test_connection_follows_hosts_when_known() -> None:
     tray, peripheral, _ = make_tray()
     peripheral.mouse.notifying = True
-    peripheral.hosts.hosts = {"/a": Host("/a", "iPad", blocked=False, connected=False)}
+    peripheral.hosts.hosts = {"/a": Host("/a", "A", "iPad", connected=False)}
     assert tray.icon() == "disconnected"
     peripheral.hosts.hosts["/a"].connected = True
     assert tray.icon() == "laptop"

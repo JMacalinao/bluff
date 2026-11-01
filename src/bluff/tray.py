@@ -240,7 +240,7 @@ class Tray:
         can_switch = self.peripheral.connected and not self.bridge.active
         hosts = [
             (FIRST_HOST_ITEM + index, {"label": ("s", host.name), "toggle-type": ("s", "radio"),
-                                       "toggle-state": ("i", 0 if host.blocked else 1)})
+                                       "toggle-state": ("i", int(host.address == self.peripheral.hosts.chosen_address))})
             for index, host in enumerate(self._hosts())
         ]  # fmt: skip
         return [

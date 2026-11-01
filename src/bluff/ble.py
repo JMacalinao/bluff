@@ -252,7 +252,7 @@ class Peripheral:
     def connected(self) -> bool:
         # BlueZ keeps a bonded host's subscription across disconnects, so StopNotify never comes for it.
         if self.hosts.hosts:
-            return any(host.connected and not host.blocked for host in self.hosts.hosts.values())
+            return any(host.connected for host in self.hosts.hosts.values())
         return self.keyboard.notifying or self.mouse.notifying
 
     @property
@@ -272,11 +272,11 @@ class Peripheral:
         self.on_subscription_change()
 
     async def _update_advertising(self) -> None:
-        # Advertising while a host is connected lets the blocked hosts see bluff, retry and get
-        # rejected; Android stops reconnecting after enough of that. Without known hosts
+        # Once the chosen host is connected nobody else needs to find bluff, and a disconnected
+        # host that cannot see bluff waits quietly instead of reconnecting. Without known hosts
         # `connected` cannot tell a disconnect, so keep advertising then.
         async with self._advertising_lock:
-            wanted = self.pairing or not self.hosts.hosts or not self.connected
+            wanted = self.pairing or not self.hosts.hosts or not self.hosts.settled
             bus, state = self._bus, (wanted, self.pairing)
             if bus is None or state == self._advertising:
                 return

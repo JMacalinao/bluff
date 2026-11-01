@@ -48,7 +48,7 @@ async def test_advertises_only_while_no_known_host_is_connected() -> None:
     await peripheral._update_advertising()
     assert calls == ["RegisterAdvertisement"]
 
-    peripheral.hosts.hosts = {"/a": Host("/a", "iPad", blocked=False, connected=True)}
+    peripheral.hosts.hosts = {"/a": Host("/a", "A", "iPad", connected=True)}
     await peripheral._update_advertising()
     await peripheral._update_advertising()
     assert calls == ["RegisterAdvertisement", "UnregisterAdvertisement"]
