@@ -16,31 +16,32 @@ Built for Wayland compositors with no input-capture portal (Niri): bluff reads
 
 ## Use
 
-Pair once, in the foreground:
-
-```sh
-uv run bluff --pair
-```
-
-1. On the iPad, open Settings > Bluetooth and pick `bluff`.
-2. Compare the six-digit code in the terminal with the iPad's and answer `y`.
-3. Press and release Ctrl+Alt+Super together to send input to the iPad.
-   Do it again to take it back.
-
-Then stop it and run bluff as a user service. Outside `--pair` it is not
-discoverable and refuses every pairing request; the bonded iPad reconnects
-on its own.
+Install and run bluff as a user service tied to the graphical session:
 
 ```sh
 uv tool install .
 install -Dm644 contrib/bluff.service ~/.config/systemd/user/bluff.service
 systemctl --user enable --now bluff
-journalctl --user -u bluff -f
 ```
 
-Stop the service before running `bluff --pair` again; only one instance can
-hold the HID service. After pulling changes, `uv tool install --reinstall .`
-and `systemctl --user restart bluff`.
+bluff puts an icon in the system tray (any StatusNotifierItem tray: KDE,
+Waybar, DankMaterialShell and others; GNOME needs the AppIndicator
+extension).
+
+1. Pick "Pair a new iPad…" in the tray menu. bluff becomes discoverable for
+   two minutes.
+2. On the iPad, open Settings > Bluetooth and pick `bluff`.
+3. A notification shows the six-digit code. Accept it if the iPad shows the
+   same code.
+4. Click the tray icon, or press and release Ctrl+Alt+Super together, to
+   send input to the iPad. Press the hotkey again to take it back.
+
+Outside pairing mode bluff is not discoverable and refuses every pairing
+request; a bonded iPad reconnects on its own. Without a tray, stop the
+service and run `bluff --pair` in a terminal to pair there instead.
+
+After pulling changes: `uv tool install --reinstall .` and
+`systemctl --user restart bluff`. Logs: `journalctl --user -u bluff -f`.
 
 If the iPad disconnects, input returns to the laptop on its own. Stopping
 bluff releases the grab too.
