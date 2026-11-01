@@ -1,7 +1,7 @@
 [project]
 name = "bluff"
 version = "0.1.0"
-description = "Turn a Linux laptop into a Bluetooth keyboard and mouse for an iPad"
+description = "Turn a Linux laptop into a Bluetooth keyboard and mouse for a tablet or phone"
 readme = "README.md"
 authors = [
     { name = "kascoord", email = "kascoord@localhost" }

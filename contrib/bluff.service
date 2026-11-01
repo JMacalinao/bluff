@@ -1,5 +1,5 @@
 [Unit]
-Description=bluff: Bluetooth keyboard and mouse for an iPad
+Description=bluff: Bluetooth keyboard and mouse for a tablet or phone
 PartOf=graphical-session.target
 After=graphical-session.target
 

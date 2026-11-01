@@ -182,7 +182,7 @@ class Agent(ServiceInterface):
 
     @dbus_method()
     async def RequestConfirmation(self, device: DBusObjectPath, passkey: Annotated[int, DBusSignature("u")]) -> None:
-        await self._confirm(f"Pair with {device}? The iPad must show {passkey:06d}.")
+        await self._confirm(f"Pair with {device}? The device must show {passkey:06d}.")
 
     @dbus_method()
     async def RequestAuthorization(self, device: DBusObjectPath) -> None:

@@ -26,8 +26,10 @@ def parse_hotkey(spec: str) -> frozenset[int]:
 
 
 def _arguments() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(prog="bluff", description="Be a Bluetooth keyboard and mouse for an iPad.")
-    parser.add_argument("--name", default="bluff", help="name the iPad shows when pairing")
+    parser = argparse.ArgumentParser(
+        prog="bluff", description="Be a Bluetooth keyboard and mouse for a tablet or phone."
+    )
+    parser.add_argument("--name", default="bluff", help="name the device shows when pairing")
     parser.add_argument("--adapter", default="hci0")
     parser.add_argument("--pair", action="store_true", help="be discoverable and confirm pairing on this terminal")
     parser.add_argument("--hotkey", type=parse_hotkey, default="LEFTCTRL+LEFTALT+LEFTMETA", help="toggle chord")
@@ -46,7 +48,7 @@ async def _run(args: argparse.Namespace) -> None:
     quit = asyncio.Event()
     await start_tray(bridge, quit)
     if args.pair:
-        logger.info("pick %r in the iPad's Bluetooth settings", args.name)
+        logger.info("pick %r in the device's Bluetooth settings", args.name)
     logger.info("press and release the hotkey to switch")
     await quit.wait()
 
@@ -59,7 +61,7 @@ def main() -> None:
     """Run bluff until interrupted.
 
     Registers the HID peripheral with BlueZ, opens every keyboard, mouse and
-    touchpad, and toggles between laptop and iPad on the hotkey. Exiting
+    touchpad, and toggles between laptop and device on the hotkey. Exiting
     releases all grabs because the kernel drops them with the file descriptors.
     """
     config = yaml.safe_load(files("bluff").joinpath("logging.yaml").read_text())

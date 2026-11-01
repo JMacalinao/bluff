@@ -1,13 +1,14 @@
 <img src="brandkit/logo/bluff-logo-readme.svg" alt="bluff" width="226">
 
-# Your laptop's keyboard and touchpad, on your iPad
+# Your laptop's keyboard and touchpad, on your tablet or phone
 
-Use a Linux laptop's keyboard and touchpad on an iPad. The laptop pretends
-to be a Bluetooth LE keyboard and mouse (HID over GATT), so the iPad needs no
-app; it pairs with bluff like any other keyboard.
+Use a Linux laptop's keyboard and touchpad on an iPad or any other device
+that pairs with Bluetooth LE keyboards. The laptop pretends to be a Bluetooth
+LE keyboard and mouse (HID over GATT), so the device needs no app; it pairs
+with bluff like any other keyboard.
 
 Built for Wayland compositors with no input-capture portal (Niri): bluff reads
-`/dev/input` directly and takes an exclusive grab while the iPad has control.
+`/dev/input` directly and takes an exclusive grab while the device has control.
 
 ## Requirements
 
@@ -30,32 +31,32 @@ bluff puts an icon in the system tray (any StatusNotifierItem tray: KDE,
 Waybar, DankMaterialShell and others; GNOME needs the AppIndicator
 extension).
 
-1. Pick "Pair a new iPad…" in the tray menu. bluff becomes discoverable for
+1. Pick "Pair a new device…" in the tray menu. bluff becomes discoverable for
    two minutes.
-2. On the iPad, open Settings > Bluetooth and pick `bluff`.
-3. A notification shows the six-digit code. Accept it if the iPad shows the
+2. On the device, open its Bluetooth settings and pick `bluff`.
+3. A notification shows the six-digit code. Accept it if the device shows the
    same code.
 4. Click the tray icon, or press and release Ctrl+Alt+Super together, to
-   send input to the iPad. Press the hotkey again to take it back.
+   send input to the device. Press the hotkey again to take it back.
 
 Outside pairing mode bluff is not discoverable and refuses every pairing
-request; a bonded iPad reconnects on its own. Without a tray, stop the
+request; a bonded device reconnects on its own. Without a tray, stop the
 service and run `bluff --pair` in a terminal to pair there instead.
 
 After pulling changes: `uv tool install --reinstall .` and
 `systemctl --user restart bluff`. Logs: `journalctl --user -u bluff -f`.
 
-If the iPad disconnects, input returns to the laptop on its own. Stopping
+If the device disconnects, input returns to the laptop on its own. Stopping
 bluff releases the grab too.
 
 Options: `--hotkey LEFTCTRL+LEFTALT+LEFTMETA`, `--name`, `--adapter`,
 `--pixels-per-mm` (touchpad speed), `--mm-per-tick` (scroll speed). The
-iPad's own pointer speed and natural-scrolling settings apply on top.
+device's own pointer speed and natural-scrolling settings apply on top.
 
 ## Limits
 
 - One finger moves, two fingers scroll, click with two fingers to right-click.
   There is no tap-to-click and there are no iPadOS trackpad gestures: those
   need Apple's Magic Trackpad protocol. Use the Globe-key shortcuts instead.
-- Devices plugged in after start are not picked up.
+- Keyboards and mice plugged in after start are not picked up.
 - No clipboard sharing.

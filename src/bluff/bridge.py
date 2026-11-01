@@ -1,4 +1,4 @@
-"""Route laptop input either to the local compositor or to the iPad."""
+"""Route laptop input either to the local compositor or to the paired device."""
 
 import asyncio
 import logging
@@ -117,9 +117,9 @@ class Bridge:
             self.peripheral.mouse.notify(mouse_report(self._buttons, *motion))
 
     def set_active(self, active: bool) -> None:
-        """Grab input for the iPad, or release it back to the laptop."""
+        """Grab input for the device, or release it back to the laptop."""
         if active and not self.peripheral.connected:
-            logger.warning("no iPad subscribed yet; staying on the laptop")
+            logger.warning("no device subscribed yet; staying on the laptop")
             return
         if not active:
             self._keyboard.clear()
@@ -129,11 +129,11 @@ class Bridge:
         for device in self._devices:
             device.grab(active)
         self.active = active
-        logger.info("input now goes to %s", "the iPad" if active else "the laptop")
+        logger.info("input now goes to %s", "the device" if active else "the laptop")
         self.on_change()
 
     def _subscription_changed(self) -> None:
         if self.active and not self.peripheral.connected:
-            logger.warning("iPad went away; returning input to the laptop")
+            logger.warning("device went away; returning input to the laptop")
             self.set_active(False)
         self.on_change()

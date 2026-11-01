@@ -226,17 +226,17 @@ class Tray:
 
     def summary(self) -> str:
         if self.peripheral.pairing:
-            return "Waiting for an iPad to pair"
+            return "Waiting for a device to pair"
         if not self.peripheral.connected:
-            return "No iPad connected"
-        return "Input goes to the iPad" if self.bridge.active else "iPad connected; input stays on the laptop"
+            return "No device connected"
+        return "Input goes to the device" if self.bridge.active else "Device connected; input stays on the laptop"
 
     def menu(self) -> list[tuple[Item, dict[str, tuple[str, Any]]]]:
         can_switch = self.peripheral.connected and not self.bridge.active
         return [
             (Item.STATUS, {"label": ("s", self.summary()), "enabled": ("b", False)}),
-            (Item.TOGGLE, {"label": ("s", "Switch to iPad"), "enabled": ("b", can_switch)}),
-            (Item.PAIR, {"label": ("s", "Stop pairing" if self.peripheral.pairing else "Pair a new iPad…")}),
+            (Item.TOGGLE, {"label": ("s", "Switch to device"), "enabled": ("b", can_switch)}),
+            (Item.PAIR, {"label": ("s", "Stop pairing" if self.peripheral.pairing else "Pair a new device…")}),
             (Item.QUIT, {"label": ("s", "Quit bluff")}),
         ]
 
