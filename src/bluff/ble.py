@@ -12,6 +12,7 @@ from dbus_fast.service import ServiceInterface, dbus_method, dbus_property
 
 from bluff.bus import call
 from bluff.hid import KEYBOARD_ID, MOUSE_ID, REPORT_MAP
+from bluff.hosts import Hosts
 
 logger = logging.getLogger(__name__)
 
@@ -172,6 +173,7 @@ class Agent(ServiceInterface):
     def __init__(self) -> None:
         super().__init__("org.bluez.Agent1")
         self.confirm: Confirm | None = None
+        self.on_accept: Callable[[str], None] = lambda device: None
 
     async def _confirm(self, question: str) -> None:
         if self.confirm is None:
@@ -183,10 +185,12 @@ class Agent(ServiceInterface):
     @dbus_method()
     async def RequestConfirmation(self, device: DBusObjectPath, passkey: Annotated[int, DBusSignature("u")]) -> None:
         await self._confirm(f"Pair with {device}? The device must show {passkey:06d}.")
+        self.on_accept(device)
 
     @dbus_method()
     async def RequestAuthorization(self, device: DBusObjectPath) -> None:
         await self._confirm(f"Allow {device} to pair?")
+        self.on_accept(device)
 
     @dbus_method()
     def AuthorizeService(self, device: DBusObjectPath, uuid: DBusStr) -> None:
@@ -211,6 +215,9 @@ class Peripheral:
         self._agent = Agent()
         self._objects: list[GattObject] = []
         self.on_subscription_change: Callable[[], None] = lambda: None
+        self.hosts = Hosts(self.adapter_path)
+        self.hosts.on_change = lambda: self.on_subscription_change()
+        self._agent.on_accept = self.hosts.accepted
         self.keyboard, self.mouse = self._build()
 
     def _add[T: GattObject](self, obj: T) -> T:
@@ -279,5 +286,6 @@ class Peripheral:
         await call(
             bus, "org.bluez", self.adapter_path, "org.bluez.GattManager1", "RegisterApplication", "oa{sv}", [ROOT, {}]
         )
+        await self.hosts.start(bus)
         await self._advertise(bus, replace=False)
         logger.info("advertising as %r on %s", self.name, self.adapter_path)

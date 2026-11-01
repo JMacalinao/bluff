@@ -19,6 +19,7 @@ from dbus_fast.service import ServiceInterface, dbus_method, dbus_property, dbus
 
 from bluff.bridge import Bridge
 from bluff.bus import call
+from bluff.hosts import Host
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,7 @@ WATCHER = "org.kde.StatusNotifierWatcher"
 NOTIFICATIONS = "org.freedesktop.Notifications"
 PAIRING_SECONDS = 120
 PROMPT_SECONDS = 60
+FIRST_HOST_ITEM = 100
 
 Props = dict[str, Variant]
 Layout = Annotated[list[Any], DBusSignature("u(ia{sv}av)")]
@@ -231,11 +233,20 @@ class Tray:
             return "No device connected"
         return "Input goes to the device" if self.bridge.active else "Device connected; input stays on the laptop"
 
-    def menu(self) -> list[tuple[Item, dict[str, tuple[str, Any]]]]:
+    def _hosts(self) -> list[Host]:
+        return sorted(self.peripheral.hosts.hosts.values(), key=lambda host: (host.name, host.path))
+
+    def menu(self) -> list[tuple[int, dict[str, tuple[str, Any]]]]:
         can_switch = self.peripheral.connected and not self.bridge.active
+        hosts = [
+            (FIRST_HOST_ITEM + index, {"label": ("s", host.name), "toggle-type": ("s", "radio"),
+                                       "toggle-state": ("i", 0 if host.blocked else 1)})
+            for index, host in enumerate(self._hosts())
+        ]  # fmt: skip
         return [
             (Item.STATUS, {"label": ("s", self.summary()), "enabled": ("b", False)}),
             (Item.TOGGLE, {"label": ("s", "Switch to device"), "enabled": ("b", can_switch)}),
+            *hosts,
             (Item.PAIR, {"label": ("s", "Stop pairing" if self.peripheral.pairing else "Pair a new device…")}),
             (Item.QUIT, {"label": ("s", "Quit bluff")}),
         ]
@@ -255,6 +266,8 @@ class Tray:
                 self._spawn(self._set_pairing(not self.peripheral.pairing))
             case Item.QUIT:
                 self._quit.set()
+            case _ if 0 <= item - FIRST_HOST_ITEM < len(hosts := self._hosts()):
+                self._spawn(self.peripheral.hosts.use(hosts[item - FIRST_HOST_ITEM].path))
 
     async def start(self) -> None:
         bus = self._bus = await MessageBus().connect()
