@@ -1,5 +1,6 @@
 """BlueZ GATT server, advertisement and pairing agent for a HID-over-GATT peripheral."""
 
+import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from typing import Annotated
@@ -216,7 +217,10 @@ class Peripheral:
         self._objects: list[GattObject] = []
         self.on_subscription_change: Callable[[], None] = lambda: None
         self.hosts = Hosts(self.adapter_path)
-        self.hosts.on_change = lambda: self.on_subscription_change()
+        self.hosts.on_change = self._hosts_changed
+        self._advertising: tuple[bool, bool] | None = None
+        self._advertising_lock = asyncio.Lock()
+        self._tasks: set[asyncio.Task[None]] = set()
         self._agent.on_accept = self.hosts.accepted
         self.keyboard, self.mouse = self._build()
 
@@ -258,21 +262,36 @@ class Peripheral:
     async def set_pairing(self, confirm: Confirm | None) -> None:
         """Become discoverable and accept pairing through `confirm`, or stop with None."""
         self._agent.confirm = confirm
-        if self._bus:
-            await self._advertise(self._bus, replace=True)
+        await self._update_advertising()
         logger.info("pairing mode %s", "on" if confirm else "off")
 
-    async def _advertise(self, bus: MessageBus, replace: bool) -> None:
-        advertising = "org.bluez.LEAdvertisingManager1"
-        if replace:
-            await call(
-                bus, "org.bluez", self.adapter_path, advertising, "UnregisterAdvertisement", "o", [ADVERTISEMENT]
-            )
-            bus.unexport(ADVERTISEMENT)
-        bus.export(ADVERTISEMENT, Advertisement(self.name, discoverable=self.pairing))
-        await call(
-            bus, "org.bluez", self.adapter_path, advertising, "RegisterAdvertisement", "oa{sv}", [ADVERTISEMENT, {}]
-        )
+    def _hosts_changed(self) -> None:
+        task = asyncio.create_task(self._update_advertising())
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+        self.on_subscription_change()
+
+    async def _update_advertising(self) -> None:
+        # Advertising while a host is connected lets the blocked hosts see bluff, retry and get
+        # rejected; Android stops reconnecting after enough of that. Without known hosts
+        # `connected` cannot tell a disconnect, so keep advertising then.
+        async with self._advertising_lock:
+            wanted = self.pairing or not self.hosts.hosts or not self.connected
+            bus, state = self._bus, (wanted, self.pairing)
+            if bus is None or state == self._advertising:
+                return
+            manager = "org.bluez.LEAdvertisingManager1"
+            if self._advertising and self._advertising[0]:
+                await call(
+                    bus, "org.bluez", self.adapter_path, manager, "UnregisterAdvertisement", "o", [ADVERTISEMENT]
+                )
+                bus.unexport(ADVERTISEMENT)
+            if wanted:
+                bus.export(ADVERTISEMENT, Advertisement(self.name, discoverable=self.pairing))
+                await call(bus, "org.bluez", self.adapter_path, manager, "RegisterAdvertisement", "oa{sv}",
+                           [ADVERTISEMENT, {}])  # fmt: skip
+            self._advertising = state
+            logger.info("advertising %s", "on" if wanted else "off while a host is connected")
 
     async def start(self) -> None:
         bus = self._bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
@@ -290,5 +309,5 @@ class Peripheral:
             bus, "org.bluez", self.adapter_path, "org.bluez.GattManager1", "RegisterApplication", "oa{sv}", [ROOT, {}]
         )
         await self.hosts.start(bus)
-        await self._advertise(bus, replace=False)
-        logger.info("advertising as %r on %s", self.name, self.adapter_path)
+        await self._update_advertising()
+        logger.info("registered as %r on %s", self.name, self.adapter_path)
