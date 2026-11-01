@@ -1,4 +1,6 @@
-# bluff
+<img src="brandkit/logo/bluff-logo-readme.svg" alt="bluff" width="226">
+
+# Your laptop's keyboard and touchpad, on your iPad
 
 Use a Linux laptop's keyboard and touchpad on an iPad. The laptop pretends
 to be a Bluetooth LE keyboard and mouse (HID over GATT), so the iPad needs no

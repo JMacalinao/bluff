@@ -1,0 +1,19 @@
+{
+  "scope": "Brand assets only; never import as app theme overrides",
+  "colors": {
+    "felt": "#7ED9A6",
+    "baize": "#2E7A55",
+    "graphite": "#111214",
+    "charcoal": "#17181B",
+    "silver": "#E7E8EA",
+    "paper": "#FBFBFC",
+    "rule": "#282A2F",
+    "gray": "#9196A0"
+  },
+  "rules": {
+    "felt": "Mark and small accents on dark backgrounds",
+    "baize": "Mark and small accents on light backgrounds",
+    "surfaces": "Monochrome, shared with Kascoord",
+    "text": "Monochrome except small accessible brand accents"
+  }
+}

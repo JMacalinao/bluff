@@ -35,6 +35,7 @@ extend-select = ["I", "UP", "B"]
 
 [tool.pyright]
 typeCheckingMode = "basic"
+include = ["src", "tests"]
 
 [tool.pytest.ini_options]
 asyncio_default_fixture_loop_scope = "function"
