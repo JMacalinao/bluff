@@ -29,6 +29,7 @@ WATCHER = "org.kde.StatusNotifierWatcher"
 NOTIFICATIONS = "org.freedesktop.Notifications"
 PAIRING_SECONDS = 120
 PROMPT_SECONDS = 60
+RECONNECT_SECONDS = 2
 FIRST_HOST_ITEM = 100
 
 Props = dict[str, Variant]
@@ -271,6 +272,7 @@ class Tray:
 
     async def start(self) -> None:
         bus = self._bus = await MessageBus().connect()
+        self._spawn(self._reconnect_when_lost(bus))
         bus.export(ITEM_PATH, self._item)
         bus.export(MENU_PATH, self._menu)
         bus.add_message_handler(self._on_signal)
@@ -285,6 +287,26 @@ class Tray:
             )
         self.bridge.on_change = self.refresh
         await self._register(name)
+
+    async def _reconnect_when_lost(self, bus: MessageBus) -> None:
+        try:
+            await bus.wait_for_disconnect()
+            error: BaseException | None = None
+        except Exception as lost:  # noqa: BLE001 - re-raises whatever killed the bus; it is only logged
+            error = lost
+        if self._quit.is_set():
+            return
+        # dbus_fast drops the connection on any socket error without saying why, so say it here.
+        logger.warning("lost the session bus (%r); bringing the tray back", error)
+        for path in (ITEM_PATH, MENU_PATH):
+            bus.unexport(path)
+        while not self._quit.is_set():
+            await asyncio.sleep(RECONNECT_SECONDS)
+            try:
+                await self.start()
+                return
+            except (DBusFastError, OSError) as failure:
+                logger.warning("tray still has no session bus: %s", failure)
 
     async def _register(self, name: str) -> None:
         if self._bus is None:
