@@ -1,22 +1,23 @@
 """BlueZ GATT server, advertisement and pairing agent for a HID-over-GATT peripheral."""
 
-import asyncio
 import logging
-from collections.abc import Callable
-from typing import Annotated, Any
+from collections.abc import Awaitable, Callable
+from typing import Annotated
 
-from dbus_fast import BusType, DBusError, Message, MessageType, Variant
+from dbus_fast import BusType, DBusError, Variant
 from dbus_fast.aio import MessageBus
 from dbus_fast.annotations import DBusBool, DBusBytes, DBusObjectPath, DBusSignature, DBusStr, DBusUInt16
 from dbus_fast.constants import PropertyAccess
 from dbus_fast.service import ServiceInterface, dbus_method, dbus_property
 
+from bluff.bus import call
 from bluff.hid import KEYBOARD_ID, MOUSE_ID, REPORT_MAP
 
 logger = logging.getLogger(__name__)
 
 Options = Annotated[dict[str, Variant], DBusSignature("a{sv}")]
 Strings = Annotated[list[str], DBusSignature("as")]
+type Confirm = Callable[[str], Awaitable[bool]]
 
 ROOT = "/org/bluff/gatt"
 ADVERTISEMENT = "/org/bluff/advertisement"
@@ -162,20 +163,20 @@ class Advertisement(ServiceInterface):
 
 
 class Agent(ServiceInterface):
-    """Numeric-comparison pairing on the terminal, or a flat refusal outside pairing mode.
+    """Pairing agent: numeric comparison through `confirm`, or refuse when it is None.
 
     Being the default agent matters even when refusing: with no agent, BlueZ
     accepts Just Works pairing from anyone in range.
     """
 
-    def __init__(self, pairing: bool) -> None:
+    def __init__(self) -> None:
         super().__init__("org.bluez.Agent1")
-        self._pairing = pairing
+        self.confirm: Confirm | None = None
 
     async def _confirm(self, question: str) -> None:
-        if not self._pairing:
-            logger.warning("refused pairing (%s); run bluff --pair to pair", question)
-        elif (await asyncio.to_thread(input, f"{question} [y/N] ")).strip().lower() == "y":
+        if self.confirm is None:
+            logger.warning("refused pairing (%s); not in pairing mode", question)
+        elif await self.confirm(question):
             return
         raise DBusError("org.bluez.Error.Rejected", "pairing rejected")
 
@@ -203,10 +204,11 @@ class Agent(ServiceInterface):
 class Peripheral:
     """HID-over-GATT keyboard and mouse registered on a BlueZ adapter."""
 
-    def __init__(self, name: str, adapter: str = "hci0", pairing: bool = False) -> None:
+    def __init__(self, name: str, adapter: str = "hci0") -> None:
         self.name = name
-        self.pairing = pairing
         self.adapter_path = f"/org/bluez/{adapter}"
+        self._bus: MessageBus | None = None
+        self._agent = Agent()
         self._objects: list[GattObject] = []
         self.on_subscription_change: Callable[[], None] = lambda: None
         self.keyboard, self.mouse = self._build()
@@ -239,27 +241,43 @@ class Peripheral:
     def connected(self) -> bool:
         return self.keyboard.notifying or self.mouse.notifying
 
+    @property
+    def pairing(self) -> bool:
+        return self._agent.confirm is not None
+
+    async def set_pairing(self, confirm: Confirm | None) -> None:
+        """Become discoverable and accept pairing through `confirm`, or stop with None."""
+        self._agent.confirm = confirm
+        if self._bus:
+            await self._advertise(self._bus, replace=True)
+        logger.info("pairing mode %s", "on" if confirm else "off")
+
+    async def _advertise(self, bus: MessageBus, replace: bool) -> None:
+        advertising = "org.bluez.LEAdvertisingManager1"
+        if replace:
+            await call(
+                bus, "org.bluez", self.adapter_path, advertising, "UnregisterAdvertisement", "o", [ADVERTISEMENT]
+            )
+            bus.unexport(ADVERTISEMENT)
+        bus.export(ADVERTISEMENT, Advertisement(self.name, discoverable=self.pairing))
+        await call(
+            bus, "org.bluez", self.adapter_path, advertising, "RegisterAdvertisement", "oa{sv}", [ADVERTISEMENT, {}]
+        )
+
     async def start(self) -> None:
-        bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
+        bus = self._bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
         for obj in self._objects:
             bus.export(obj.path, obj)
-        bus.export(ADVERTISEMENT, Advertisement(self.name, discoverable=self.pairing))
-        bus.export(AGENT, Agent(self.pairing))
+        bus.export(AGENT, self._agent)
 
-        await _call(bus, "/org/bluez", "org.bluez.AgentManager1", "RegisterAgent", "os", [AGENT, "DisplayYesNo"])
-        await _call(bus, "/org/bluez", "org.bluez.AgentManager1", "RequestDefaultAgent", "o", [AGENT])
+        await call(
+            bus, "org.bluez", "/org/bluez", "org.bluez.AgentManager1", "RegisterAgent", "os", [AGENT, "DisplayYesNo"]
+        )
+        await call(bus, "org.bluez", "/org/bluez", "org.bluez.AgentManager1", "RequestDefaultAgent", "o", [AGENT])
         powered = ["org.bluez.Adapter1", "Powered", Variant("b", True)]
-        await _call(bus, self.adapter_path, "org.freedesktop.DBus.Properties", "Set", "ssv", powered)
-        await _call(bus, self.adapter_path, "org.bluez.GattManager1", "RegisterApplication", "oa{sv}", [ROOT, {}])
-        advertising = "org.bluez.LEAdvertisingManager1"
-        await _call(bus, self.adapter_path, advertising, "RegisterAdvertisement", "oa{sv}", [ADVERTISEMENT, {}])
+        await call(bus, "org.bluez", self.adapter_path, "org.freedesktop.DBus.Properties", "Set", "ssv", powered)
+        await call(
+            bus, "org.bluez", self.adapter_path, "org.bluez.GattManager1", "RegisterApplication", "oa{sv}", [ROOT, {}]
+        )
+        await self._advertise(bus, replace=False)
         logger.info("advertising as %r on %s", self.name, self.adapter_path)
-
-
-async def _call(bus: MessageBus, path: str, interface: str, member: str, signature: str, body: list[Any]) -> None:
-    message = Message(
-        destination="org.bluez", path=path, interface=interface, member=member, signature=signature, body=body
-    )
-    reply = await bus.call(message)
-    if reply is not None and reply.message_type == MessageType.ERROR:
-        raise DBusError(reply.error_name or "", f"{member}: {reply.body[0] if reply.body else ''}")

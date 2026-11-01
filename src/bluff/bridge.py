@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from collections.abc import Callable
 
 from bluff.ble import Peripheral
 from bluff.evdev import BTN_LEFT, EV_KEY, EV_REL, EV_SYN, REL_HWHEEL, REL_WHEEL, REL_X, REL_Y, Device, DeviceInfo, Kind
@@ -47,6 +48,7 @@ class Bridge:
         self._motion = [0, 0, 0, 0]
         self._flush_handle: asyncio.TimerHandle | None = None
         self._last_flush = 0.0
+        self.on_change: Callable[[], None] = lambda: None
         peripheral.on_subscription_change = self._subscription_changed
 
     def open(self, infos: list[DeviceInfo]) -> None:
@@ -93,7 +95,7 @@ class Bridge:
         # Switching only once everything is released keeps the compositor from seeing a stuck key.
         if self._toggle_pending and not self._held:
             self._toggle_pending = False
-            self._set_active(not self.active)
+            self.set_active(not self.active)
 
     def _button(self, bit: int, pressed: bool) -> None:
         self._buttons = self._buttons | 1 << bit if pressed else self._buttons & ~(1 << bit)
@@ -114,7 +116,8 @@ class Bridge:
         if self.active:
             self.peripheral.mouse.notify(mouse_report(self._buttons, *motion))
 
-    def _set_active(self, active: bool) -> None:
+    def set_active(self, active: bool) -> None:
+        """Grab input for the iPad, or release it back to the laptop."""
         if active and not self.peripheral.connected:
             logger.warning("no iPad subscribed yet; staying on the laptop")
             return
@@ -127,8 +130,10 @@ class Bridge:
             device.grab(active)
         self.active = active
         logger.info("input now goes to %s", "the iPad" if active else "the laptop")
+        self.on_change()
 
     def _subscription_changed(self) -> None:
         if self.active and not self.peripheral.connected:
             logger.warning("iPad went away; returning input to the laptop")
-            self._set_active(False)
+            self.set_active(False)
+        self.on_change()

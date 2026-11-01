@@ -12,6 +12,7 @@ from bluff.ble import Peripheral
 from bluff.bridge import Bridge
 from bluff.evdev import discover
 from bluff.keymap import KEYCODES
+from bluff.tray import start_tray
 
 logger = logging.getLogger(__name__)
 
@@ -36,14 +37,22 @@ def _arguments() -> argparse.Namespace:
 
 
 async def _run(args: argparse.Namespace) -> None:
-    peripheral = Peripheral(args.name, args.adapter, pairing=args.pair)
+    peripheral = Peripheral(args.name, args.adapter)
+    if args.pair:
+        await peripheral.set_pairing(_ask_terminal)
     await peripheral.start()
     bridge = Bridge(peripheral, args.hotkey, args.pixels_per_mm, args.mm_per_tick)
     bridge.open(discover())
+    quit = asyncio.Event()
+    await start_tray(bridge, quit)
     if args.pair:
         logger.info("pick %r in the iPad's Bluetooth settings", args.name)
     logger.info("press and release the hotkey to switch")
-    await asyncio.Event().wait()
+    await quit.wait()
+
+
+async def _ask_terminal(question: str) -> bool:
+    return (await asyncio.to_thread(input, f"{question} [y/N] ")).strip().lower() == "y"
 
 
 def main() -> None:
