@@ -131,9 +131,10 @@ type GattObject = GattService | GattCharacteristic | GattDescriptor
 
 
 class Advertisement(ServiceInterface):
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str, discoverable: bool) -> None:
         super().__init__("org.bluez.LEAdvertisement1")
         self._name = name
+        self._discoverable = discoverable
 
     @dbus_property(access=PropertyAccess.READ)
     def Type(self) -> DBusStr:
@@ -153,7 +154,7 @@ class Advertisement(ServiceInterface):
 
     @dbus_property(access=PropertyAccess.READ)
     def Discoverable(self) -> DBusBool:
-        return True
+        return self._discoverable
 
     @dbus_method()
     def Release(self) -> None:
@@ -161,23 +162,30 @@ class Advertisement(ServiceInterface):
 
 
 class Agent(ServiceInterface):
-    """Numeric-comparison pairing: the passkey must match the one the iPad shows."""
+    """Numeric-comparison pairing on the terminal, or a flat refusal outside pairing mode.
 
-    def __init__(self) -> None:
+    Being the default agent matters even when refusing: with no agent, BlueZ
+    accepts Just Works pairing from anyone in range.
+    """
+
+    def __init__(self, pairing: bool) -> None:
         super().__init__("org.bluez.Agent1")
+        self._pairing = pairing
+
+    async def _confirm(self, question: str) -> None:
+        if not self._pairing:
+            logger.warning("refused pairing (%s); run bluff --pair to pair", question)
+        elif (await asyncio.to_thread(input, f"{question} [y/N] ")).strip().lower() == "y":
+            return
+        raise DBusError("org.bluez.Error.Rejected", "pairing rejected")
 
     @dbus_method()
     async def RequestConfirmation(self, device: DBusObjectPath, passkey: Annotated[int, DBusSignature("u")]) -> None:
-        prompt = f"Pair with {device}? The iPad must show {passkey:06d}. [y/N] "
-        answer = await asyncio.to_thread(input, prompt)
-        if answer.strip().lower() != "y":
-            raise DBusError("org.bluez.Error.Rejected", "pairing rejected")
+        await self._confirm(f"Pair with {device}? The iPad must show {passkey:06d}.")
 
     @dbus_method()
     async def RequestAuthorization(self, device: DBusObjectPath) -> None:
-        answer = await asyncio.to_thread(input, f"Allow {device} to pair? [y/N] ")
-        if answer.strip().lower() != "y":
-            raise DBusError("org.bluez.Error.Rejected", "pairing rejected")
+        await self._confirm(f"Allow {device} to pair?")
 
     @dbus_method()
     def AuthorizeService(self, device: DBusObjectPath, uuid: DBusStr) -> None:
@@ -195,8 +203,9 @@ class Agent(ServiceInterface):
 class Peripheral:
     """HID-over-GATT keyboard and mouse registered on a BlueZ adapter."""
 
-    def __init__(self, name: str, adapter: str = "hci0") -> None:
+    def __init__(self, name: str, adapter: str = "hci0", pairing: bool = False) -> None:
         self.name = name
+        self.pairing = pairing
         self.adapter_path = f"/org/bluez/{adapter}"
         self._objects: list[GattObject] = []
         self.on_subscription_change: Callable[[], None] = lambda: None
@@ -234,8 +243,8 @@ class Peripheral:
         bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
         for obj in self._objects:
             bus.export(obj.path, obj)
-        bus.export(ADVERTISEMENT, Advertisement(self.name))
-        bus.export(AGENT, Agent())
+        bus.export(ADVERTISEMENT, Advertisement(self.name, discoverable=self.pairing))
+        bus.export(AGENT, Agent(self.pairing))
 
         await _call(bus, "/org/bluez", "org.bluez.AgentManager1", "RegisterAgent", "os", [AGENT, "DisplayYesNo"])
         await _call(bus, "/org/bluez", "org.bluez.AgentManager1", "RequestDefaultAgent", "o", [AGENT])

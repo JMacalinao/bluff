@@ -1,0 +1,10 @@
+[Unit]
+Description=bluff: Bluetooth keyboard and mouse for an iPad
+
+[Service]
+ExecStart=%h/.local/bin/bluff
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

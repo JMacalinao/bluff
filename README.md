@@ -16,8 +16,10 @@ Built for Wayland compositors with no input-capture portal (Niri): bluff reads
 
 ## Use
 
+Pair once, in the foreground:
+
 ```sh
-uv run bluff
+uv run bluff --pair
 ```
 
 1. On the iPad, open Settings > Bluetooth and pick `bluff`.
@@ -25,7 +27,22 @@ uv run bluff
 3. Press and release Ctrl+Alt+Super together to send input to the iPad.
    Do it again to take it back.
 
-If the iPad disconnects, input returns to the laptop on its own. Quitting
+Then stop it and run bluff as a user service. Outside `--pair` it is not
+discoverable and refuses every pairing request; the bonded iPad reconnects
+on its own.
+
+```sh
+uv tool install .
+install -Dm644 contrib/bluff.service ~/.config/systemd/user/bluff.service
+systemctl --user enable --now bluff
+journalctl --user -u bluff -f
+```
+
+Stop the service before running `bluff --pair` again; only one instance can
+hold the HID service. After pulling changes, `uv tool install --reinstall .`
+and `systemctl --user restart bluff`.
+
+If the iPad disconnects, input returns to the laptop on its own. Stopping
 bluff releases the grab too.
 
 Options: `--hotkey LEFTCTRL+LEFTALT+LEFTMETA`, `--name`, `--adapter`,

@@ -28,6 +28,7 @@ def _arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="bluff", description="Be a Bluetooth keyboard and mouse for an iPad.")
     parser.add_argument("--name", default="bluff", help="name the iPad shows when pairing")
     parser.add_argument("--adapter", default="hci0")
+    parser.add_argument("--pair", action="store_true", help="be discoverable and confirm pairing on this terminal")
     parser.add_argument("--hotkey", type=parse_hotkey, default="LEFTCTRL+LEFTALT+LEFTMETA", help="toggle chord")
     parser.add_argument("--pixels-per-mm", type=float, default=10.0, help="touchpad pointer speed")
     parser.add_argument("--mm-per-tick", type=float, default=2.0, help="touchpad finger travel per scroll step")
@@ -35,11 +36,13 @@ def _arguments() -> argparse.Namespace:
 
 
 async def _run(args: argparse.Namespace) -> None:
-    peripheral = Peripheral(args.name, args.adapter)
+    peripheral = Peripheral(args.name, args.adapter, pairing=args.pair)
     await peripheral.start()
     bridge = Bridge(peripheral, args.hotkey, args.pixels_per_mm, args.mm_per_tick)
     bridge.open(discover())
-    logger.info("pair from the iPad's Bluetooth settings, then press and release the hotkey to switch")
+    if args.pair:
+        logger.info("pick %r in the iPad's Bluetooth settings", args.name)
+    logger.info("press and release the hotkey to switch")
     await asyncio.Event().wait()
 
 
