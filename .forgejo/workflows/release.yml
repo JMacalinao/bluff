@@ -12,7 +12,6 @@ jobs:
   release:
     runs-on: docker
     env:
-      LLVM_MINGW_VERSION: "20261020"
       NFPM_VERSION: 2.48.0
     steps:
       - uses: actions/checkout@v7
@@ -27,28 +26,21 @@ jobs:
           fi
           echo "VERSION=$version" >> "$GITHUB_ENV"
 
-      # The `docker` label maps to node:22-bookworm, which has gcc but no Rust,
-      # llvm-mingw or nfpm.
+      # The `docker` label maps to node:22-bookworm, which has gcc but no Rust
+      # or nfpm. bluff.exe is built and signed on GitHub (.github/workflows).
       - name: Install toolchains
         run: |
           set -eu
-          curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --target x86_64-pc-windows-gnullvm
-          mingw="llvm-mingw-$LLVM_MINGW_VERSION-ucrt-ubuntu-22.04-x86_64"
-          curl -fsSL "https://github.com/mstorsjo/llvm-mingw/releases/download/$LLVM_MINGW_VERSION/$mingw.tar.xz" \
-            | tar xJ -C /opt
+          curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal
           curl -fsSL "https://github.com/goreleaser/nfpm/releases/download/v$NFPM_VERSION/nfpm_${NFPM_VERSION}_Linux_x86_64.tar.gz" \
             | tar xz -C /usr/local/bin nfpm
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-          echo "/opt/$mingw/bin" >> "$GITHUB_PATH"
 
       - name: Test
         run: cargo test --locked --release
 
       - name: Build
-        run: |
-          set -eu
-          cargo build --locked --release
-          cargo build --locked --release --target x86_64-pc-windows-gnullvm
+        run: cargo build --locked --release
 
       - name: Package
         run: |
@@ -61,7 +53,6 @@ jobs:
           done
           tar czf "dist/bluff-$VERSION-x86_64-linux.tar.gz" \
             LICENSE -C target/release bluff -C ../../contrib bluff.service
-          cp target/x86_64-pc-windows-gnullvm/release/bluff.exe dist/
           (cd dist && sha256sum * > SHA256SUMS)
           ls -l dist
 
@@ -71,8 +62,15 @@ jobs:
         run: |
           set -eu
           api="$GITHUB_SERVER_URL/api/v1/repos/$GITHUB_REPOSITORY/releases"
+          # SignPath requires the code signing policy on every release page.
+          body="$(node -e 'console.log(JSON.stringify({
+            tag_name: process.env.GITHUB_REF_NAME,
+            name: process.env.GITHUB_REF_NAME,
+            body: "bluff.exe is signed on GitHub and appears here once the signing is approved.\n\n" +
+              "[Code signing policy](https://git.macalinao.org/jj/bluff#code-signing-policy)",
+          }))')"
           id="$(curl -fsS -X POST -H "Authorization: token $TOKEN" -H "Content-Type: application/json" \
-            -d "{\"tag_name\": \"$GITHUB_REF_NAME\", \"name\": \"$GITHUB_REF_NAME\"}" "$api" \
+            -d "$body" "$api" \
             | node -e 'let s = ""; process.stdin.on("data", d => s += d).on("end", () => process.stdout.write(String(JSON.parse(s).id)))')"
           for file in dist/*; do
             curl -fsS -X POST -H "Authorization: token $TOKEN" \

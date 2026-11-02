@@ -1,0 +1,86 @@
+# Runs on the GitHub mirror, not Forgejo: SignPath signs open-source builds
+# only from GitHub-hosted runners. Forgejo ignores .github/workflows while
+# .forgejo/workflows exists.
+name: sign-windows
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  # SignPath reads the job details and downloads the unsigned artifact.
+  actions: read
+
+jobs:
+  windows:
+    runs-on: ubuntu-latest
+    env:
+      LLVM_MINGW_VERSION: "20261020"
+      FORGEJO_API: https://git.macalinao.org/api/v1/repos/jj/bluff
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check the tag matches Cargo.toml
+        run: |
+          set -eu
+          version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)"
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match Cargo.toml version $version"
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Install toolchains
+        run: |
+          set -eu
+          rustup target add x86_64-pc-windows-gnullvm
+          mingw="llvm-mingw-$LLVM_MINGW_VERSION-ucrt-ubuntu-22.04-x86_64"
+          curl -fsSL "https://github.com/mstorsjo/llvm-mingw/releases/download/$LLVM_MINGW_VERSION/$mingw.tar.xz" \
+            | tar xJ -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/$mingw/bin" >> "$GITHUB_PATH"
+
+      - name: Build
+        run: cargo build --locked --release --target x86_64-pc-windows-gnullvm
+
+      - name: Upload unsigned exe
+        id: unsigned
+        uses: actions/upload-artifact@v7
+        with:
+          name: bluff-unsigned
+          path: target/x86_64-pc-windows-gnullvm/release/bluff.exe
+          if-no-files-found: error
+
+      # Waits for a manual approval in SignPath.
+      - name: Sign
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: bluff
+          signing-policy-slug: release-signing
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          parameters: |
+            version: "${{ env.VERSION }}"
+          wait-for-completion-timeout-in-seconds: 14400
+          output-artifact-directory: signed
+
+      # Forgejo's release workflow creates the release; it is usually done long
+      # before the signing approval, but wait for it in case it is not.
+      - name: Attach to the Forgejo release
+        env:
+          TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+        run: |
+          set -euo pipefail
+          auth="Authorization: token $TOKEN"
+          for _ in $(seq 60); do
+            id="$(curl -fsS -H "$auth" "$FORGEJO_API/releases/tags/$GITHUB_REF_NAME" | jq -r .id)" && break
+            sleep 30
+          done
+          [ -n "${id:-}" ] || { echo "::error::no Forgejo release for $GITHUB_REF_NAME after 30 minutes"; exit 1; }
+          curl -fsS -X POST -H "$auth" -F "attachment=@signed/bluff.exe" \
+            "$FORGEJO_API/releases/$id/assets?name=bluff.exe" > /dev/null
+          (cd signed && sha256sum bluff.exe > bluff.exe.sha256)
+          curl -fsS -X POST -H "$auth" -F "attachment=@signed/bluff.exe.sha256" \
+            "$FORGEJO_API/releases/$id/assets?name=bluff.exe.sha256" > /dev/null
