@@ -1,14 +1,17 @@
 """Minimal evdev access: device discovery, nonblocking reads and exclusive grab."""
 
 import asyncio
-import fcntl
 import logging
 import os
 import struct
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+
+if sys.platform != "win32":
+    import fcntl
 
 logger = logging.getLogger(__name__)
 

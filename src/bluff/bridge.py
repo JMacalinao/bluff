@@ -3,8 +3,8 @@
 import asyncio
 import logging
 from collections.abc import Callable
+from typing import Protocol
 
-from bluff.ble import Peripheral
 from bluff.evdev import BTN_LEFT, EV_KEY, EV_REL, EV_SYN, REL_HWHEEL, REL_WHEEL, REL_X, REL_Y, Device, DeviceInfo, Kind
 from bluff.hid import MOUSE_BUTTONS, Keyboard, mouse_report
 from bluff.touchpad import Touchpad
@@ -17,7 +17,35 @@ _KEY_REPEAT = 2
 _REL_SLOTS = {REL_X: 0, REL_Y: 1, REL_WHEEL: 2, REL_HWHEEL: 3}
 
 
-class Bridge:
+class Report(Protocol):
+    def notify(self, value: bytes) -> None: ...
+
+
+class Peripheral(Protocol):
+    """The HID peripheral input goes to: BlueZ on Linux, WinRT on Windows."""
+
+    on_subscription_change: Callable[[], None]
+
+    @property
+    def keyboard(self) -> Report: ...
+
+    @property
+    def mouse(self) -> Report: ...
+
+    @property
+    def connected(self) -> bool: ...
+
+
+class Input(Protocol):
+    """A source of Linux input events that can be kept from the laptop."""
+
+    @property
+    def info(self) -> DeviceInfo: ...
+
+    def grab(self, on: bool) -> None: ...
+
+
+class Bridge[P: Peripheral]:
     """Reads every input device; while active, grabs them and forwards to the peripheral.
 
     Parameters
@@ -30,17 +58,15 @@ class Bridge:
         Touchpad scaling, see `Touchpad`.
     """
 
-    def __init__(
-        self, peripheral: Peripheral, hotkey: frozenset[int], pixels_per_mm: float, mm_per_tick: float
-    ) -> None:
+    def __init__(self, peripheral: P, hotkey: frozenset[int], pixels_per_mm: float, mm_per_tick: float) -> None:
         self.peripheral = peripheral
         self.hotkey = hotkey
         self.active = False
         self._pixels_per_mm = pixels_per_mm
         self._mm_per_tick = mm_per_tick
-        self._devices: list[Device] = []
-        self._touchpads: dict[Device, Touchpad] = {}
-        self._clicks: dict[Device, int] = {}
+        self._devices: list[Input] = []
+        self._touchpads: dict[Input, Touchpad] = {}
+        self._clicks: dict[Input, int] = {}
         self._held: set[int] = set()
         self._toggle_pending = False
         self._keyboard = Keyboard()
@@ -53,13 +79,17 @@ class Bridge:
 
     def open(self, infos: list[DeviceInfo]) -> None:
         for info in infos:
-            device = Device(info, self._event)
+            device = Device(info, self.event)
             if info.kind is Kind.TOUCHPAD:
                 self._touchpads[device] = Touchpad(device.resolution(0), self._pixels_per_mm, self._mm_per_tick)
-            self._devices.append(device)
-            logger.info("using %s %r (%s)", info.kind, info.name, info.path)
+            self.add(device)
 
-    def _event(self, device: Device, type_: int, code: int, value: int) -> None:
+    def add(self, device: Input) -> None:
+        """Take input from `device`, which feeds its events to `event`."""
+        self._devices.append(device)
+        logger.info("using %s %r (%s)", device.info.kind, device.info.name, device.info.path)
+
+    def event(self, device: Input, type_: int, code: int, value: int) -> None:
         kind = device.info.kind
         if kind is Kind.KEYBOARD:
             if type_ == EV_KEY and value != _KEY_REPEAT:

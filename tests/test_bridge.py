@@ -21,9 +21,9 @@ class FakeDevice:
 
 def press(bridge: Bridge, device: FakeDevice, *names: str) -> None:
     for name in names:
-        bridge._event(cast(Device, device), EV_KEY, KEYCODES[name], 1)
+        bridge.event(cast(Device, device), EV_KEY, KEYCODES[name], 1)
     for name in names:
-        bridge._event(cast(Device, device), EV_KEY, KEYCODES[name], 0)
+        bridge.event(cast(Device, device), EV_KEY, KEYCODES[name], 0)
 
 
 @pytest.mark.asyncio

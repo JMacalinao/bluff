@@ -17,6 +17,7 @@ from dbus_fast.constants import PropertyAccess
 from dbus_fast.errors import DBusFastError
 from dbus_fast.service import ServiceInterface, dbus_method, dbus_property, dbus_signal
 
+from bluff.ble import Peripheral
 from bluff.bridge import Bridge
 from bluff.bus import call
 from bluff.hosts import Host
@@ -209,7 +210,7 @@ class DBusMenu(ServiceInterface):
 class Tray:
     """Shows where input goes, switches on click, and runs pairing with notification prompts."""
 
-    def __init__(self, bridge: Bridge, quit: asyncio.Event) -> None:
+    def __init__(self, bridge: Bridge[Peripheral], quit: asyncio.Event) -> None:
         self.bridge = bridge
         self.peripheral = bridge.peripheral
         self._quit = quit
@@ -362,7 +363,7 @@ class Tray:
         task.add_done_callback(self._tasks.discard)
 
 
-async def start_tray(bridge: Bridge, quit: asyncio.Event) -> Tray | None:
+async def start_tray(bridge: Bridge[Peripheral], quit: asyncio.Event) -> Tray | None:
     """Start the tray, or log and return None when there is no usable session bus."""
     tray = Tray(bridge, quit)
     try:
