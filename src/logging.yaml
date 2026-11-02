@@ -1,0 +1,12 @@
+appenders:
+  console:
+    kind: console
+    target: stderr
+    encoder:
+      pattern: "{d(%H:%M:%S)} {l:<7} {t}: {m}{n}"
+root:
+  level: warn
+  appenders: [console]
+loggers:
+  bluff:
+    level: info
