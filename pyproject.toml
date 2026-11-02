@@ -8,8 +8,14 @@ authors = [
 ]
 requires-python = ">=3.14"
 dependencies = [
-    "dbus-fast>=5.2.0",
+    "dbus-fast>=5.2.0 ; sys_platform == 'linux'",
     "pyyaml>=6.0.3",
+    "winrt-runtime>=3 ; sys_platform == 'win32'",
+    "winrt-windows-devices-bluetooth>=3 ; sys_platform == 'win32'",
+    "winrt-windows-devices-bluetooth-genericattributeprofile>=3 ; sys_platform == 'win32'",
+    "winrt-windows-foundation>=3 ; sys_platform == 'win32'",
+    "winrt-windows-foundation-collections>=3 ; sys_platform == 'win32'",
+    "winrt-windows-storage-streams>=3 ; sys_platform == 'win32'",
 ]
 
 [project.scripts]
@@ -36,6 +42,12 @@ extend-select = ["I", "UP", "B"]
 [tool.pyright]
 typeCheckingMode = "basic"
 include = ["src", "tests"]
+# winrt and pystray only install on Windows, so their imports stay unresolved elsewhere.
+executionEnvironments = [
+    { root = "src/bluff/windows", reportMissingImports = "none" },
+    { root = "src" },
+    { root = "tests" },
+]
 
 [tool.pytest.ini_options]
 asyncio_default_fixture_loop_scope = "function"

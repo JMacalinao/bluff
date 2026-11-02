@@ -4,15 +4,13 @@ import argparse
 import asyncio
 import logging
 import logging.config
+import sys
 from importlib.resources import files
 
 import yaml
 
-from bluff.ble import Peripheral
 from bluff.bridge import Bridge
-from bluff.evdev import discover
 from bluff.keymap import KEYCODES
-from bluff.tray import start_tray
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +37,13 @@ def _arguments() -> argparse.Namespace:
 
 
 async def _run(args: argparse.Namespace) -> None:
+    # Each platform's modules import libraries that only install there.
+    if sys.platform == "win32":
+        raise SystemExit("Windows support is not wired up yet")
+    from bluff.ble import Peripheral
+    from bluff.evdev import discover
+    from bluff.tray import start_tray
+
     peripheral = Peripheral(args.name, args.adapter)
     if args.pair:
         await peripheral.set_pairing(_ask_terminal)
