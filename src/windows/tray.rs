@@ -221,11 +221,9 @@ impl Tray {
             *timer = Some(pairing.abort_handle());
         }
         drop(timer);
-        tokio::spawn(async move {
-            if let Err(error) = ble::set_pairing(&self.shared, on).await {
-                warn!("could not switch pairing mode: {error}");
-            }
-            self.refresh();
-        });
+        if let Err(error) = ble::set_pairing(&self.shared, on) {
+            warn!("could not switch pairing mode: {error}");
+        }
+        self.refresh();
     }
 }

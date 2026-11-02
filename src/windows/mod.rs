@@ -30,7 +30,7 @@ pub async fn run(args: Args) -> Result<(), Error> {
         args.mm_per_tick,
     )));
     if args.pair {
-        ble::set_pairing(&shared, true).await?;
+        ble::set_pairing(&shared, true)?;
         info!("pick this computer in the device's Bluetooth settings; Windows asks to confirm");
     }
     let grab = Arc::new(Grab::default());

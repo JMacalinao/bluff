@@ -6,7 +6,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, mpsc};
 use std::thread;
-use std::time::Duration;
 
 use log::{info, warn};
 use tokio::sync::mpsc::UnboundedSender;
@@ -14,8 +13,8 @@ use windows::Devices::Bluetooth::BluetoothLEDevice;
 use windows::Devices::Bluetooth::GenericAttributeProfile::{
     GattCharacteristicProperties, GattCommunicationStatus, GattLocalCharacteristic,
     GattLocalCharacteristicParameters, GattLocalDescriptorParameters, GattLocalService,
-    GattProtectionLevel, GattServiceProvider, GattServiceProviderAdvertisementStatus,
-    GattServiceProviderAdvertisingParameters, GattSubscribedClient,
+    GattProtectionLevel, GattServiceProvider, GattServiceProviderAdvertisingParameters,
+    GattSubscribedClient,
 };
 use windows::Foundation::TypedEventHandler;
 use windows::Storage::Streams::{DataWriter, IBuffer};
@@ -26,8 +25,6 @@ use crate::hid::{KEYBOARD_ID, MOUSE_ID, REPORT_MAP};
 
 // Report reads need an encrypted link, which is what makes iPadOS bond.
 const SECURE: GattProtectionLevel = GattProtectionLevel::EncryptionRequired;
-const SETTLE_POLL: Duration = Duration::from_millis(10);
-const SETTLE_POLLS: u32 = 200;
 
 pub fn default_store() -> PathBuf {
     let local = env::var_os("LOCALAPPDATA")
@@ -234,7 +231,7 @@ impl Peripheral {
             mouse,
             providers: vec![hid, battery],
         };
-        advertise(&peripheral.providers, false).await?;
+        advertise(&peripheral.providers, false, false)?;
         info!("advertising as a keyboard and mouse");
         Ok(peripheral)
     }
@@ -299,60 +296,33 @@ impl Peripheral {
 }
 
 /// Advertise as discoverable so a new host can pair, or stop.
-pub async fn set_pairing(
-    bridge: &Mutex<Bridge<Peripheral>>,
-    on: bool,
-) -> windows::core::Result<()> {
+pub fn set_pairing(bridge: &Mutex<Bridge<Peripheral>>, on: bool) -> windows::core::Result<()> {
     let providers = {
         let mut bridge = lock(bridge);
         bridge.peripheral.pairing = on;
         bridge.peripheral.providers.clone()
     };
-    advertise(&providers, on).await?;
+    advertise(&providers, on, true)?;
     info!("pairing mode {}", if on { "on" } else { "off" });
     Ok(())
 }
 
-async fn advertise(
+/// Advertise as discoverable or not; `restart` first stops the advertisement already running.
+// `AdvertisementStatus` stays Created even while advertising, so it cannot tell whether to stop.
+fn advertise(
     providers: &[GattServiceProvider],
     discoverable: bool,
+    restart: bool,
 ) -> windows::core::Result<()> {
-    use GattServiceProviderAdvertisementStatus as Status;
     let parameters = GattServiceProviderAdvertisingParameters::new()?;
     parameters.SetIsConnectable(true)?;
     parameters.SetIsDiscoverable(discoverable)?;
     for provider in providers {
-        // Stopping a provider that never started raises.
-        if provider.AdvertisementStatus()? != Status::Created {
+        if restart {
             provider.StopAdvertising()?;
-            settle(provider, &[Status::Stopped, Status::Aborted]).await?;
         }
         provider.StartAdvertisingWithParameters(&parameters)?;
-        let started = [
-            Status::Started,
-            Status::StartedWithoutAllAdvertisementData,
-            Status::Aborted,
-        ];
-        settle(provider, &started).await?;
     }
-    Ok(())
-}
-
-/// Wait for a start or stop to finish: calling either again before then fails with E_ILLEGAL_METHOD_CALL.
-async fn settle(
-    provider: &GattServiceProvider,
-    done: &[GattServiceProviderAdvertisementStatus],
-) -> windows::core::Result<()> {
-    for _ in 0..SETTLE_POLLS {
-        if done.contains(&provider.AdvertisementStatus()?) {
-            return Ok(());
-        }
-        tokio::time::sleep(SETTLE_POLL).await;
-    }
-    warn!(
-        "advertising still {:?} after waiting",
-        provider.AdvertisementStatus()?
-    );
     Ok(())
 }
 
