@@ -4,8 +4,9 @@ use std::collections::{BTreeSet, HashMap};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc;
+use std::sync::{Mutex, mpsc};
 use std::thread;
+use std::time::Duration;
 
 use log::{info, warn};
 use tokio::sync::mpsc::UnboundedSender;
@@ -20,11 +21,13 @@ use windows::Foundation::TypedEventHandler;
 use windows::Storage::Streams::{DataWriter, IBuffer};
 use windows::core::{GUID, HSTRING};
 
-use crate::bridge;
+use crate::bridge::{self, Bridge, lock};
 use crate::hid::{KEYBOARD_ID, MOUSE_ID, REPORT_MAP};
 
 // Report reads need an encrypted link, which is what makes iPadOS bond.
 const SECURE: GattProtectionLevel = GattProtectionLevel::EncryptionRequired;
+const STOP_POLL: Duration = Duration::from_millis(10);
+const STOP_POLLS: u32 = 200;
 
 pub fn default_store() -> PathBuf {
     let local = env::var_os("LOCALAPPDATA")
@@ -231,7 +234,7 @@ impl Peripheral {
             mouse,
             providers: vec![hid, battery],
         };
-        peripheral.advertise()?;
+        advertise(&peripheral.providers, false).await?;
         info!("advertising as a keyboard and mouse");
         Ok(peripheral)
     }
@@ -257,28 +260,6 @@ impl Peripheral {
             "input is for {:?} from now on",
             self.names.get(host).map_or(host, String::as_str)
         );
-    }
-
-    /// Advertise as discoverable so a new host can pair, or stop.
-    pub fn set_pairing(&mut self, on: bool) -> windows::core::Result<()> {
-        self.pairing = on;
-        self.advertise()?;
-        info!("pairing mode {}", if on { "on" } else { "off" });
-        Ok(())
-    }
-
-    fn advertise(&self) -> windows::core::Result<()> {
-        let parameters = GattServiceProviderAdvertisingParameters::new()?;
-        parameters.SetIsConnectable(true)?;
-        parameters.SetIsDiscoverable(self.pairing)?;
-        for provider in &self.providers {
-            // Stopping a provider that never started raises.
-            if provider.AdvertisementStatus()? != GattServiceProviderAdvertisementStatus::Created {
-                provider.StopAdvertising()?;
-            }
-            provider.StartAdvertisingWithParameters(&parameters)?;
-        }
-        Ok(())
     }
 
     /// Take in the subscribed hosts; return the addresses and device ids of hosts not named yet.
@@ -315,6 +296,49 @@ impl Peripheral {
         );
         unnamed
     }
+}
+
+/// Advertise as discoverable so a new host can pair, or stop.
+pub async fn set_pairing(
+    bridge: &Mutex<Bridge<Peripheral>>,
+    on: bool,
+) -> windows::core::Result<()> {
+    let providers = {
+        let mut bridge = lock(bridge);
+        bridge.peripheral.pairing = on;
+        bridge.peripheral.providers.clone()
+    };
+    advertise(&providers, on).await?;
+    info!("pairing mode {}", if on { "on" } else { "off" });
+    Ok(())
+}
+
+async fn advertise(
+    providers: &[GattServiceProvider],
+    discoverable: bool,
+) -> windows::core::Result<()> {
+    let parameters = GattServiceProviderAdvertisingParameters::new()?;
+    parameters.SetIsConnectable(true)?;
+    parameters.SetIsDiscoverable(discoverable)?;
+    for provider in providers {
+        // Stopping a provider that never started raises.
+        if provider.AdvertisementStatus()? != GattServiceProviderAdvertisementStatus::Created {
+            provider.StopAdvertising()?;
+        }
+        // Starting again before the stop has finished fails with E_ILLEGAL_METHOD_CALL.
+        for _ in 0..STOP_POLLS {
+            let status = provider.AdvertisementStatus()?;
+            if status != GattServiceProviderAdvertisementStatus::Started
+                && status
+                    != GattServiceProviderAdvertisementStatus::StartedWithoutAllAdvertisementData
+            {
+                break;
+            }
+            tokio::time::sleep(STOP_POLL).await;
+        }
+        provider.StartAdvertisingWithParameters(&parameters)?;
+    }
+    Ok(())
 }
 
 /// The name Windows knows a host by.

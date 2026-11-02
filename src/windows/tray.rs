@@ -17,7 +17,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 use crate::bridge::{Bridge, Peripheral as _, lock};
 use crate::icons::{self, pixmaps, summary};
-use crate::windows::ble::Peripheral;
+use crate::windows::ble::{self, Peripheral};
 
 pub type Shared = Arc<Mutex<Bridge<Peripheral>>>;
 
@@ -207,9 +207,6 @@ impl Tray {
         if let Some(timer) = timer.take() {
             timer.abort();
         }
-        if let Err(error) = lock(&self.shared).peripheral.set_pairing(on) {
-            warn!("could not switch pairing mode: {error}");
-        }
         if on {
             let tray = self.clone();
             let pairing = tokio::spawn(async move {
@@ -224,6 +221,11 @@ impl Tray {
             *timer = Some(pairing.abort_handle());
         }
         drop(timer);
-        self.refresh();
+        tokio::spawn(async move {
+            if let Err(error) = ble::set_pairing(&self.shared, on).await {
+                warn!("could not switch pairing mode: {error}");
+            }
+            self.refresh();
+        });
     }
 }
