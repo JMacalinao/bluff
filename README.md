@@ -105,7 +105,8 @@ cargo +stable-x86_64-pc-windows-gnullvm build --release
 That gives a single `target\release\bluff.exe`.
 
 Copy `bluff.exe` anywhere. Run it from a terminal, or put a shortcut to it in
-`shell:startup` (set it to run minimized) to start it at sign-in. Closing its console window quits bluff.
+`shell:startup` (set it to run minimized) to start it at sign-in. Closing its
+console window quits bluff.
 
 The tray icon and hotkey work as on Linux, with these differences:
 
@@ -124,6 +125,28 @@ The tray icon and hotkey work as on Linux, with these differences:
   window stays on the laptop unless bluff runs elevated too.
 - Remembered devices and the chosen one live in `%LOCALAPPDATA%\bluff`.
 
+## Uninstall
+
+On Linux, stop the service, remove the package, and delete the list of paired
+devices:
+
+```sh
+systemctl --user disable --now bluff
+sudo apt remove bluff        # Debian, Ubuntu
+sudo dnf remove bluff        # Fedora
+sudo pacman -R bluff         # Arch
+rm -r ~/.local/state/bluff
+```
+
+From the tarball or a source build, delete `~/.local/bin/bluff` and
+`~/.config/systemd/user/bluff.service` instead of removing a package.
+
+On Windows, close bluff's console window, delete its shortcut from
+`shell:startup`, then delete `bluff.exe` and `%LOCALAPPDATA%\bluff`.
+
+Then forget bluff in the device's Bluetooth settings, and remove the device
+from the laptop's.
+
 ## Limits
 
 - One finger moves, two fingers scroll, click with two fingers to right-click.
@@ -141,8 +164,28 @@ git tag v0.2.0
 git push origin main v0.2.0
 ```
 
-CI builds the Linux packages and `bluff.exe` and attaches them to a release
-for the tag. The tag must match the version in `Cargo.toml`.
+Forgejo CI builds the Linux packages and creates a release for the tag. The
+tag must match the version in `Cargo.toml`. The tag also reaches the GitHub
+mirror, where `.github/workflows/sign-windows.yml` builds `bluff.exe` and
+submits it to SignPath. Approve the signing request in SignPath within four
+hours, and the workflow attaches the signed exe to the Forgejo release.
+
+## Code signing policy
+
+Free code signing for the Windows build is provided by
+[SignPath.io](https://about.signpath.io), with a certificate by
+[SignPath Foundation](https://signpath.org).
+
+- Committers and reviewers: [JJ Macalinao](https://git.macalinao.org/jj)
+- Approvers: [JJ Macalinao](https://git.macalinao.org/jj)
+
+Only `bluff.exe` built by `.github/workflows/sign-windows.yml` from a tag in
+this repository is signed. The SignPath artifact configuration is in
+`.signpath/artifact-configuration.xml`.
+
+Privacy: bluff makes no network connections and collects no data. It sends
+keyboard and mouse input only over Bluetooth, only to the device you paired
+and picked, and only while that device has control.
 
 ## License
 
