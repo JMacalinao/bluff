@@ -18,7 +18,7 @@ use zbus::zvariant::{ObjectPath, OwnedValue, Value};
 use zbus::{Connection, MatchRule, MessageStream, interface};
 
 use crate::bridge::{Bridge, Peripheral as _};
-use crate::icons::{Icon, pixmaps};
+use crate::icons::{Icon, icon, pixmaps, summary};
 use crate::linux::ble::{Ble, Confirm, Peripheral, Shared, lock};
 
 const ITEM_PATH: &str = "/StatusNotifierItem";
@@ -37,27 +37,6 @@ pub const FIRST_HOST_ITEM: i32 = 100;
 
 type Props = HashMap<String, OwnedValue>;
 type Pixmaps = Vec<(i32, i32, Vec<u8>)>;
-
-fn icon(bridge: &Bridge<Peripheral>) -> Icon {
-    if bridge.peripheral.pairing() {
-        Icon::Pairing
-    } else if !bridge.peripheral.connected() {
-        Icon::Disconnected
-    } else if bridge.active {
-        Icon::Ipad
-    } else {
-        Icon::Laptop
-    }
-}
-
-fn summary(bridge: &Bridge<Peripheral>) -> &'static str {
-    match icon(bridge) {
-        Icon::Pairing => "Waiting for a device to pair",
-        Icon::Disconnected => "No device connected",
-        Icon::Ipad => "Input goes to the device",
-        Icon::Laptop => "Device connected; input stays on the laptop",
-    }
-}
 
 fn status(bridge: &Bridge<Peripheral>) -> &'static str {
     if bridge.peripheral.pairing() {
@@ -81,7 +60,10 @@ pub fn menu(bridge: &Bridge<Peripheral>) -> Vec<(i32, Props)> {
     let mut items = vec![
         (
             STATUS,
-            props([("label", summary(bridge).into()), ("enabled", false.into())]),
+            props([
+                ("label", summary(icon(bridge)).into()),
+                ("enabled", false.into()),
+            ]),
         ),
         (
             TOGGLE,
@@ -431,7 +413,7 @@ impl Item {
             String::new(),
             icon_pixmaps(icon(&bridge)),
             "bluff".into(),
-            summary(&bridge).into(),
+            summary(icon(&bridge)).into(),
         )
     }
 

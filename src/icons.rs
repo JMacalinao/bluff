@@ -1,4 +1,6 @@
-//! Tray icons shipped with bluff.
+//! Tray icons shipped with bluff, and which one shows.
+
+use crate::bridge::{Bridge, Peripheral};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Icon {
@@ -36,6 +38,28 @@ pub fn pixmaps(icon: Icon) -> Vec<Frame> {
         data = rest;
     }
     frames
+}
+
+/// The icon for where input goes now.
+pub fn icon<P: Peripheral>(bridge: &Bridge<P>) -> Icon {
+    if bridge.peripheral.pairing() {
+        Icon::Pairing
+    } else if !bridge.peripheral.connected() {
+        Icon::Disconnected
+    } else if bridge.active {
+        Icon::Ipad
+    } else {
+        Icon::Laptop
+    }
+}
+
+pub fn summary(icon: Icon) -> &'static str {
+    match icon {
+        Icon::Pairing => "Waiting for a device to pair",
+        Icon::Disconnected => "No device connected",
+        Icon::Ipad => "Input goes to the device",
+        Icon::Laptop => "Device connected; input stays on the laptop",
+    }
 }
 
 #[cfg(test)]

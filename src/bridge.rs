@@ -36,6 +36,10 @@ pub trait Peripheral {
     fn notify_keyboard(&mut self, report: &[u8]);
     fn notify_mouse(&mut self, report: &[u8]);
     fn connected(&self) -> bool;
+    /// Whether a new host may pair now.
+    fn pairing(&self) -> bool {
+        false
+    }
 }
 
 /// Reads every input device; while active, grabs them and forwards to the peripheral.

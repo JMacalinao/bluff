@@ -23,7 +23,7 @@ use zbus::names::InterfaceName;
 use zbus::zvariant::{ObjectPath, OwnedObjectPath, Value};
 use zbus::{Connection, MatchRule, MessageStream, interface};
 
-use crate::bridge::{self, Bridge};
+use crate::bridge::{self, Bridge, Peripheral as _};
 use crate::hid::{KEYBOARD_ID, MOUSE_ID, REPORT_MAP};
 use crate::linux::hosts::{Change, Host, Hosts, Props};
 
@@ -187,10 +187,6 @@ impl Peripheral {
         self.hosts.chosen().map(|host| host.path.clone())
     }
 
-    pub fn pairing(&self) -> bool {
-        self.confirm.is_some()
-    }
-
     /// Open a socket for `device` and return BlueZ's end.
     pub fn acquire(&mut self, which: Which, device: &str) -> io::Result<OwnedFd> {
         static NEXT_ID: AtomicU64 = AtomicU64::new(0);
@@ -276,6 +272,10 @@ impl bridge::Peripheral for Peripheral {
             .sockets
             .keys()
             .any(|device| target.as_ref().is_none_or(|target| target == device))
+    }
+
+    fn pairing(&self) -> bool {
+        self.confirm.is_some()
     }
 }
 
@@ -1028,7 +1028,6 @@ mod tests {
     use std::collections::HashSet;
 
     use super::*;
-    use crate::bridge::Peripheral as _;
     use crate::linux::hosts::tests::{props, temp_store};
 
     fn peripheral(test: &str) -> (Peripheral, UnboundedReceiver<Dropped>) {
