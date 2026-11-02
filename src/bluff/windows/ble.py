@@ -79,7 +79,8 @@ class Report:
     def __init__(self, characteristic: GattLocalCharacteristic, target: Callable[[], str | None]) -> None:
         self.characteristic = characteristic
         self._target = target
-        self._tasks: set[asyncio.Task[None]] = set()
+        self._queue: asyncio.Queue[tuple[IBuffer, GattSubscribedClient]] = asyncio.Queue()
+        self._sender: asyncio.Task[None] | None = None
 
     def addresses(self) -> list[str]:
         return [address(client) for client in self.characteristic.subscribed_clients]
@@ -88,15 +89,18 @@ class Report:
         target = self._target()
         for client in self.characteristic.subscribed_clients:
             if target is None or address(client) == target:
-                # Tasks start in creation order, so reports reach the host in order too.
-                task = asyncio.create_task(self._send(_buffer(value), client))
-                self._tasks.add(task)
-                task.add_done_callback(self._tasks.discard)
+                self._queue.put_nowait((_buffer(value), client))
+        if self._sender is None:
+            self._sender = asyncio.create_task(self._send())
 
-    async def _send(self, value: IBuffer, client: GattSubscribedClient) -> None:
-        result = await self.characteristic.notify_value_async(value, client)
-        if result.status != GattCommunicationStatus.SUCCESS:
-            logger.warning("report to %s failed: %s", address(client), result.status)
+    async def _send(self) -> None:
+        # One notification at a time: WinRT may finish concurrent ones out of order, and a
+        # key release that overtakes its press leaves the key held on the host.
+        while True:
+            value, client = await self._queue.get()
+            result = await self.characteristic.notify_value_async(value, client)
+            if result.status != GattCommunicationStatus.SUCCESS:
+                logger.warning("report to %s failed: %s", address(client), result.status)
 
 
 class Peripheral:
