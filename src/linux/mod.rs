@@ -10,9 +10,8 @@ use std::sync::{Arc, Mutex};
 
 use log::{info, warn};
 use tokio::sync::{mpsc, watch};
-use tokio::time::{Instant, sleep_until};
 
-use crate::bridge::Bridge;
+use crate::bridge::{self, Bridge};
 use crate::cli::{Args, Error};
 use crate::input::{ABS_X, Input, Kind};
 use ble::{Ble, Confirm, Peripheral, Shared, lock};
@@ -34,7 +33,7 @@ pub async fn run(args: Args) -> Result<(), Error> {
     if args.pair {
         ble.set_pairing(Some(ask_terminal())).await?;
     }
-    let (events, mut received) = mpsc::unbounded_channel();
+    let (events, received) = mpsc::unbounded_channel();
     for info in discover()? {
         let name = info.name.clone();
         let opened = Device::open(info).and_then(|device| Ok((device.reader()?, device)));
@@ -54,22 +53,14 @@ pub async fn run(args: Args) -> Result<(), Error> {
             Err(error) => warn!("could not open {name}: {error}"),
         }
     }
-    let (quit, mut quitting) = watch::channel(false);
+    let (quit, quitting) = watch::channel(false);
     tray::start(shared.clone(), ble, quit).await;
     if args.pair {
         info!("pick {:?} in the device's Bluetooth settings", args.name);
     }
     info!("press and release the hotkey to switch");
-    loop {
-        let flush_at = lock(&shared).flush_at();
-        let deadline = flush_at.map_or_else(Instant::now, Instant::from_std);
-        tokio::select! {
-            Some((device, type_, code, value)) = received.recv() => lock(&shared).event(device, type_, code, value),
-            () = sleep_until(deadline), if flush_at.is_some() => lock(&shared).flush(),
-            _ = quitting.changed() => return Ok(()),
-            _ = tokio::signal::ctrl_c() => return Ok(()),
-        }
-    }
+    bridge::pump(&shared, received, quitting).await;
+    Ok(())
 }
 
 fn ask_terminal() -> Confirm {

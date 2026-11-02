@@ -1,15 +1,21 @@
 //! Route laptop input either to the local compositor or to the paired device.
 
 use std::collections::{HashMap, HashSet};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
 use log::{info, warn};
+use tokio::sync::{mpsc::UnboundedReceiver, watch};
+use tokio::time::sleep_until;
 
 use crate::hid::{self, Keyboard, mouse_report};
 use crate::input::{
     BTN_LEFT, EV_KEY, EV_REL, EV_SYN, Input, Kind, REL_HWHEEL, REL_WHEEL, REL_X, REL_Y,
 };
 use crate::touchpad::Touchpad;
+
+/// One input event: device index, type, code and value.
+pub type Event = (usize, u16, u16, i32);
 
 // BLE notifies at the connection interval anyway; coalescing keeps the queue short.
 pub const MOUSE_INTERVAL: Duration = Duration::from_millis(8);
@@ -233,6 +239,30 @@ impl<P: Peripheral> Bridge<P> {
             self.set_active(false);
         }
         (self.on_change)();
+    }
+}
+
+/// Lock the bridge; a panic elsewhere must not take input down with it.
+pub fn lock<P: Peripheral>(bridge: &Mutex<Bridge<P>>) -> MutexGuard<'_, Bridge<P>> {
+    bridge.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// Feed input events to the bridge and send motion on time, until `quit` turns true or Ctrl+C.
+pub async fn pump<P: Peripheral>(
+    bridge: &Mutex<Bridge<P>>,
+    mut events: UnboundedReceiver<Event>,
+    mut quit: watch::Receiver<bool>,
+) {
+    loop {
+        let flush_at = lock(bridge).flush_at();
+        let deadline =
+            flush_at.map_or_else(tokio::time::Instant::now, tokio::time::Instant::from_std);
+        tokio::select! {
+            Some((device, type_, code, value)) = events.recv() => lock(bridge).event(device, type_, code, value),
+            () = sleep_until(deadline), if flush_at.is_some() => lock(bridge).flush(),
+            _ = quit.changed() => return,
+            _ = tokio::signal::ctrl_c() => return,
+        }
     }
 }
 

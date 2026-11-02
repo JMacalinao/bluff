@@ -12,13 +12,11 @@ use log::warn;
 use tokio::io::unix::AsyncFd;
 use tokio::sync::mpsc::UnboundedSender;
 
+use crate::bridge::Event;
 use crate::input::{
     ABS_X, ABS_Y, BTN_LEFT, BTN_TOOL_FINGER, DeviceInfo, EV_ABS, EV_KEY, EV_REL, EV_REP, Input,
     KEY_A, Kind, REL_X, REL_Y,
 };
-
-/// One input event: device index, type, code and value.
-pub type Event = (usize, u16, u16, i32);
 
 const EVENT_SIZE: usize = 24; // struct input_event on 64-bit: timeval, u16 type, u16 code, i32 value
 const EVIOCGRAB: libc::c_ulong = 0x40044590;

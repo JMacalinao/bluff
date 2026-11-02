@@ -7,7 +7,7 @@ use std::io::{self, Read};
 use std::os::fd::{AsRawFd, OwnedFd};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use futures_util::StreamExt;
@@ -49,12 +49,7 @@ const RESUBSCRIBE: Duration = Duration::from_secs(10);
 // At most one nudge per host in this long, so a host that never subscribes is not kicked forever.
 const NUDGE: Duration = Duration::from_secs(120);
 
-/// Lock the shared state; a panic elsewhere must not take input down with it.
-pub fn lock(shared: &Shared) -> MutexGuard<'_, Bridge<Peripheral>> {
-    shared
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-}
+pub use crate::bridge::lock;
 
 fn path(path: &str) -> ObjectPath<'_> {
     ObjectPath::from_str_unchecked(path)
