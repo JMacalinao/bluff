@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import socket
+import uuid
 from collections.abc import Awaitable, Callable
 from typing import Annotated, Any
 
@@ -288,7 +289,7 @@ class Peripheral:
         self.hosts.on_connect = self._host_connected
         self._advertising = False
         self._register_lock = asyncio.Lock()
-        self._spare_exported = False
+        self._spare: GattCharacteristic | None = None
         self._registered_at = -RESUBSCRIBE_SECONDS
         self._nudged: dict[str, float] = {}
         self._tasks: set[asyncio.Task[None]] = set()
@@ -318,8 +319,7 @@ class Peripheral:
         info = self._add(GattService(f"{ROOT}/service2", "180a"))
         # PnP ID: USB vendor space, Linux Foundation VID 0x1d6b, arbitrary PID and version.
         self._add(GattCharacteristic(info, 0, "2a50", ["read"], bytes([0x02, 0x6B, 0x1D, 0x46, 0x42, 0x00, 0x01])))
-        # Not part of the app at first; see _resubscribe.
-        self._spare = GattCharacteristic(info, 1, "2a26", ["read"], b"bluff")
+        self._info = info
         return reports[0], reports[1]
 
     def _target(self) -> str | None:
@@ -361,13 +361,12 @@ class Peripheral:
             logger.info("%r is back without subscribing; registering again so it does", host.name)
             gatt = "org.bluez.GattManager1"
             await call(self._bus, "org.bluez", self.adapter_path, gatt, "UnregisterApplication", "o", [ROOT])
-            # The same layout keeps the database hash, and bonded hosts then trust their old
-            # subscriptions and write none. Toggling a spare characteristic changes the hash.
-            if self._spare_exported:
+            # A database hash the host has seen before makes it trust its old subscriptions and
+            # write none, so every registration gets a spare characteristic with a new UUID.
+            if self._spare:
                 self._bus.unexport(self._spare.path)
-            else:
-                self._bus.export(self._spare.path, self._spare)
-            self._spare_exported = not self._spare_exported
+            self._spare = GattCharacteristic(self._info, 1, str(uuid.uuid4()), ["read"])
+            self._bus.export(self._spare.path, self._spare)
             await call(self._bus, "org.bluez", self.adapter_path, gatt, "RegisterApplication", "oa{sv}", [ROOT, {}])
             self._registered_at = asyncio.get_running_loop().time()
         await asyncio.sleep(RESUBSCRIBE_SECONDS)
