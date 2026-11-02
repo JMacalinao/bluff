@@ -17,3 +17,7 @@ futures-util = { version = "0.3.34", default-features = false }
 libc = "0.2.191"
 serde = "1.0.229"
 zbus = { version = "5.13.2", default-features = false, features = ["tokio"] }
+
+[target."cfg(windows)".dependencies]
+tray-icon = "0.24.2"
+windows = { version = "0.62.2", features = ["Devices_Bluetooth", "Devices_Bluetooth_GenericAttributeProfile", "Devices_Enumeration", "Foundation", "Foundation_Collections", "Storage_Streams", "Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input", "Win32_Devices_HumanInterfaceDevice", "Win32_System_LibraryLoader", "Win32_System_Threading"] }

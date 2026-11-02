@@ -10,3 +10,5 @@ pub mod keymap;
 pub mod linux;
 pub mod scancodes;
 pub mod touchpad;
+#[cfg(windows)]
+pub mod windows;
