@@ -17,11 +17,12 @@ use bluff::cli::{Args, init_logging};
 async fn main() -> ExitCode {
     // Run from a terminal, log there. Started any other way there is no console to attach.
     #[cfg(windows)]
-    let _ = unsafe {
+    let attached = unsafe {
         windows::Win32::System::Console::AttachConsole(
             windows::Win32::System::Console::ATTACH_PARENT_PROCESS,
         )
-    };
+    }
+    .is_ok();
     init_logging();
     let args = Args::parse();
     #[cfg(target_os = "linux")]
@@ -32,7 +33,27 @@ async fn main() -> ExitCode {
         Ok(()) => ExitCode::SUCCESS,
         Err(failure) => {
             error!("{failure}");
+            #[cfg(windows)]
+            if !attached {
+                show_error(&failure.to_string());
+            }
             ExitCode::FAILURE
         }
     }
+}
+
+/// Show an error where a user without a console sees it.
+#[cfg(windows)]
+fn show_error(message: &str) {
+    use windows::Win32::UI::WindowsAndMessaging::{MB_ICONERROR, MB_OK, MessageBoxW};
+    use windows::core::{HSTRING, w};
+
+    unsafe {
+        MessageBoxW(
+            None,
+            &HSTRING::from(message),
+            w!("bluff"),
+            MB_OK | MB_ICONERROR,
+        )
+    };
 }
