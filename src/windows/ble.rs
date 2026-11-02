@@ -26,8 +26,8 @@ use crate::hid::{KEYBOARD_ID, MOUSE_ID, REPORT_MAP};
 
 // Report reads need an encrypted link, which is what makes iPadOS bond.
 const SECURE: GattProtectionLevel = GattProtectionLevel::EncryptionRequired;
-const STOP_POLL: Duration = Duration::from_millis(10);
-const STOP_POLLS: u32 = 200;
+const SETTLE_POLL: Duration = Duration::from_millis(10);
+const SETTLE_POLLS: u32 = 200;
 
 pub fn default_store() -> PathBuf {
     let local = env::var_os("LOCALAPPDATA")
@@ -317,27 +317,42 @@ async fn advertise(
     providers: &[GattServiceProvider],
     discoverable: bool,
 ) -> windows::core::Result<()> {
+    use GattServiceProviderAdvertisementStatus as Status;
     let parameters = GattServiceProviderAdvertisingParameters::new()?;
     parameters.SetIsConnectable(true)?;
     parameters.SetIsDiscoverable(discoverable)?;
     for provider in providers {
         // Stopping a provider that never started raises.
-        if provider.AdvertisementStatus()? != GattServiceProviderAdvertisementStatus::Created {
+        if provider.AdvertisementStatus()? != Status::Created {
             provider.StopAdvertising()?;
-        }
-        // Starting again before the stop has finished fails with E_ILLEGAL_METHOD_CALL.
-        for _ in 0..STOP_POLLS {
-            let status = provider.AdvertisementStatus()?;
-            if status != GattServiceProviderAdvertisementStatus::Started
-                && status
-                    != GattServiceProviderAdvertisementStatus::StartedWithoutAllAdvertisementData
-            {
-                break;
-            }
-            tokio::time::sleep(STOP_POLL).await;
+            settle(provider, &[Status::Stopped, Status::Aborted]).await?;
         }
         provider.StartAdvertisingWithParameters(&parameters)?;
+        let started = [
+            Status::Started,
+            Status::StartedWithoutAllAdvertisementData,
+            Status::Aborted,
+        ];
+        settle(provider, &started).await?;
     }
+    Ok(())
+}
+
+/// Wait for a start or stop to finish: calling either again before then fails with E_ILLEGAL_METHOD_CALL.
+async fn settle(
+    provider: &GattServiceProvider,
+    done: &[GattServiceProviderAdvertisementStatus],
+) -> windows::core::Result<()> {
+    for _ in 0..SETTLE_POLLS {
+        if done.contains(&provider.AdvertisementStatus()?) {
+            return Ok(());
+        }
+        tokio::time::sleep(SETTLE_POLL).await;
+    }
+    warn!(
+        "advertising still {:?} after waiting",
+        provider.AdvertisementStatus()?
+    );
     Ok(())
 }
 
