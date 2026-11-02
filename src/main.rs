@@ -1,3 +1,6 @@
+// A GUI-subsystem exe opens no console window on Windows; the tray icon is its UI.
+#![cfg_attr(windows, windows_subsystem = "windows")]
+
 use std::process::ExitCode;
 
 use clap::Parser;
@@ -12,6 +15,13 @@ use bluff::cli::{Args, init_logging};
 /// the process.
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> ExitCode {
+    // Run from a terminal, log there. Started any other way there is no console to attach.
+    #[cfg(windows)]
+    let _ = unsafe {
+        windows::Win32::System::Console::AttachConsole(
+            windows::Win32::System::Console::ATTACH_PARENT_PROCESS,
+        )
+    };
     init_logging();
     let args = Args::parse();
     #[cfg(target_os = "linux")]

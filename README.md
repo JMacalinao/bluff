@@ -106,8 +106,8 @@ cargo +stable-x86_64-pc-windows-gnullvm build --release
 That gives a single `target\release\bluff.exe`.
 
 Copy `bluff.exe` anywhere. Run it from a terminal, or put a shortcut to it in
-`shell:startup` (set it to run minimized) to start it at sign-in. Closing its
-console window quits bluff.
+`shell:startup` to start it at sign-in. bluff opens no window; quit it from the
+tray menu. Run from a terminal, it logs there.
 
 The tray icon and hotkey work as on Linux, with these differences:
 
@@ -142,7 +142,7 @@ rm -r ~/.local/state/bluff
 From the tarball or a source build, delete `~/.local/bin/bluff` and
 `~/.config/systemd/user/bluff.service` instead of removing a package.
 
-On Windows, close bluff's console window, delete its shortcut from
+On Windows, pick "Quit bluff" in the tray menu, delete its shortcut from
 `shell:startup`, then delete `bluff.exe` and `%LOCALAPPDATA%\bluff`.
 
 Then forget bluff in the device's Bluetooth settings, and remove the device
