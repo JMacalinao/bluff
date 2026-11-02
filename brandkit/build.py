@@ -23,6 +23,7 @@ KIT = Path(__file__).parent
 LOGO = KIT / "logo"
 FONTS = KIT / "fonts"
 TRAY = KIT.parent / "src" / "icons"
+EXE_ICON = KIT.parent / "src" / "windows" / "bluff.ico"
 COLORS = json.loads((KIT / "colors.json").read_text())["colors"]
 FELT, BAIZE = COLORS["felt"], COLORS["baize"]
 GRAPHITE, CHARCOAL, SILVER, PAPER = COLORS["graphite"], COLORS["charcoal"], COLORS["silver"], COLORS["paper"]
@@ -114,6 +115,9 @@ def logos(cards: str, text: str, text_right: float) -> None:
     icon = f'<rect width="512" height="512" rx="104" fill="{GRAPHITE}"/>'
     icon += f'<g transform="translate(64 64) scale(6)"><path fill="{FELT}" d="{cards}"/></g>'
     write("bluff-icon", svg("0 0 512 512", icon, "bluff app icon"), 512)
+    # Pillow scales the 256 px render down for the smaller sizes.
+    exe_icon = Image.open(io.BytesIO(render(svg("0 0 512 512", icon, "bluff app icon"), 256)))
+    exe_icon.save(EXE_ICON, sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
 
 
 def tray_icons(cards: str, pointer: str) -> None:
