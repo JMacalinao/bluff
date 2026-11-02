@@ -1,0 +1,81 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: docker
+    env:
+      LLVM_MINGW_VERSION: "20261020"
+      NFPM_VERSION: 2.48.0
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check the tag matches Cargo.toml
+        run: |
+          set -eu
+          version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)"
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match Cargo.toml version $version"
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      # The `docker` label maps to node:22-bookworm, which has gcc but no Rust,
+      # llvm-mingw or nfpm.
+      - name: Install toolchains
+        run: |
+          set -eu
+          curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --target x86_64-pc-windows-gnullvm
+          mingw="llvm-mingw-$LLVM_MINGW_VERSION-ucrt-ubuntu-22.04-x86_64"
+          curl -fsSL "https://github.com/mstorsjo/llvm-mingw/releases/download/$LLVM_MINGW_VERSION/$mingw.tar.xz" \
+            | tar xJ -C /opt
+          curl -fsSL "https://github.com/goreleaser/nfpm/releases/download/v$NFPM_VERSION/nfpm_${NFPM_VERSION}_Linux_x86_64.tar.gz" \
+            | tar xz -C /usr/local/bin nfpm
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          echo "/opt/$mingw/bin" >> "$GITHUB_PATH"
+
+      - name: Test
+        run: cargo test --locked --release
+
+      - name: Build
+        run: |
+          set -eu
+          cargo build --locked --release
+          cargo build --locked --release --target x86_64-pc-windows-gnullvm
+
+      - name: Package
+        run: |
+          set -eu
+          mkdir -p dist target/package
+          # Packages install the binary to /usr/bin, not ~/.local/bin.
+          sed 's|%h/.local/bin/bluff|/usr/bin/bluff|' contrib/bluff.service > target/package/bluff.service
+          for packager in deb rpm archlinux; do
+            nfpm package -f contrib/nfpm.yaml -p "$packager" -t dist/
+          done
+          tar czf "dist/bluff-$VERSION-x86_64-linux.tar.gz" \
+            -C target/release bluff -C ../../contrib bluff.service
+          cp target/x86_64-pc-windows-gnullvm/release/bluff.exe dist/
+          (cd dist && sha256sum * > SHA256SUMS)
+          ls -l dist
+
+      - name: Publish release
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          api="$GITHUB_SERVER_URL/api/v1/repos/$GITHUB_REPOSITORY/releases"
+          id="$(curl -fsS -X POST -H "Authorization: token $TOKEN" -H "Content-Type: application/json" \
+            -d "{\"tag_name\": \"$GITHUB_REF_NAME\", \"name\": \"$GITHUB_REF_NAME\"}" "$api" \
+            | node -e 'let s = ""; process.stdin.on("data", d => s += d).on("end", () => process.stdout.write(String(JSON.parse(s).id)))')"
+          for file in dist/*; do
+            curl -fsS -X POST -H "Authorization: token $TOKEN" \
+              -F "attachment=@$file" "$api/$id/assets?name=$(basename "$file")" > /dev/null
+          done
+          echo "::notice::Published $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$GITHUB_REF_NAME"
