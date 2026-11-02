@@ -1,6 +1,6 @@
 [package]
 name = "bluff"
-version = "0.1.2"
+version = "0.1.3"
 description = "Turn a laptop into a Bluetooth keyboard and mouse for a tablet or phone"
 edition = "2024"
 rust-version = "1.85"
