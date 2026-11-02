@@ -1,0 +1,3 @@
+[target.x86_64-pc-windows-gnullvm]
+# A single bluff.exe, without libunwind.dll next to it.
+rustflags = ["-C", "target-feature=+crt-static"]
