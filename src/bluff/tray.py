@@ -3,11 +3,8 @@
 import asyncio
 import logging
 import os
-import struct
 from collections.abc import Coroutine
 from enum import IntEnum
-from functools import cache
-from importlib.resources import files
 from typing import Annotated, Any
 
 from dbus_fast import DBusError, Message, MessageType, Variant
@@ -21,6 +18,7 @@ from bluff.ble import Peripheral
 from bluff.bridge import Bridge
 from bluff.bus import call
 from bluff.hosts import Host
+from bluff.icons import pixmaps
 
 logger = logging.getLogger(__name__)
 
@@ -37,19 +35,6 @@ Props = dict[str, Variant]
 Layout = Annotated[list[Any], DBusSignature("u(ia{sv}av)")]
 ToolTipStruct = Annotated[list[Any], DBusSignature("(sa(iiay)ss)")]
 Pixmaps = Annotated[list[Any], DBusSignature("a(iiay)")]
-
-
-@cache
-def pixmaps(state: str) -> list[list[Any]]:
-    """Tray pixmaps for a state, as built by brandkit/build.py: frames of (width, height, ARGB32)."""
-    data = files("bluff").joinpath("icons", f"tray-{state}.argb").read_bytes()
-    frames, offset = [], 0
-    while offset < len(data):
-        width, height = struct.unpack_from(">II", data, offset)
-        size = width * height * 4
-        frames.append([width, height, data[offset + 8 : offset + 8 + size]])
-        offset += 8 + size
-    return frames
 
 
 class Item(IntEnum):

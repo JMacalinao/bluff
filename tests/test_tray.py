@@ -5,7 +5,8 @@ from typing import cast
 from bluff.ble import Peripheral
 from bluff.bridge import Bridge
 from bluff.hosts import Host
-from bluff.tray import FIRST_HOST_ITEM, Item, Tray, pixmaps
+from bluff.icons import pixmaps
+from bluff.tray import FIRST_HOST_ITEM, Item, Tray
 
 SOCKET = cast(socket.socket, None)
 
