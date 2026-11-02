@@ -86,6 +86,18 @@ impl Keyboard {
         report
     }
 
+    /// The release and press reports that type a held key once more, None for modifiers and keys not held.
+    pub fn repeat(&self, code: u16) -> Option<[[u8; 8]; 2]> {
+        let usage = keymap::usage(code).filter(|&usage| usage < MODIFIER_FIRST)?;
+        let at = self.keys.iter().position(|&key| key == usage)?;
+        let mut released = Self {
+            modifiers: self.modifiers,
+            keys: self.keys.clone(),
+        };
+        released.keys.remove(at);
+        Some([released.report(), self.report()])
+    }
+
     pub fn clear(&mut self) {
         *self = Self::default();
     }
@@ -134,6 +146,23 @@ mod tests {
             kb.key(key(name), true);
         }
         assert_eq!(kb.report()[2..], [0x01; 6]);
+    }
+
+    #[test]
+    fn repeat_taps_the_key_and_keeps_the_rest_held() {
+        let mut kb = Keyboard::default();
+        kb.key(key("LEFTSHIFT"), true);
+        kb.key(key("A"), true);
+        kb.key(key("BACKSPACE"), true);
+        assert_eq!(
+            kb.repeat(key("BACKSPACE")),
+            Some([
+                [0x02, 0, 0x04, 0, 0, 0, 0, 0],
+                [0x02, 0, 0x04, 0x2A, 0, 0, 0, 0]
+            ])
+        );
+        assert_eq!(kb.repeat(key("LEFTSHIFT")), None);
+        assert_eq!(kb.repeat(key("B")), None);
     }
 
     #[test]

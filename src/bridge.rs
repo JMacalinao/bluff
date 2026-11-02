@@ -101,7 +101,9 @@ impl<P: Peripheral> Bridge<P> {
     pub fn event(&mut self, device: usize, type_: u16, code: u16, value: i32) {
         let pressed = value != 0;
         if self.devices[device].info().kind == Kind::Keyboard {
-            if type_ == EV_KEY && value != KEY_REPEAT {
+            if type_ == EV_KEY && value == KEY_REPEAT {
+                self.repeat(code);
+            } else if type_ == EV_KEY {
                 self.key(code, pressed);
             }
             return;
@@ -155,6 +157,16 @@ impl<P: Peripheral> Bridge<P> {
         if self.toggle_pending && self.held.is_empty() {
             self.toggle_pending = false;
             self.set_active(!self.active);
+        }
+    }
+
+    /// Type a held key again on each of the laptop's repeat events.
+    fn repeat(&mut self, code: u16) {
+        // iPadOS does not repeat keys held on bluff, not even Delete, so the laptop's repeat drives it.
+        if let Some(reports) = self.active.then(|| self.keyboard.repeat(code)).flatten() {
+            for report in reports {
+                self.peripheral.notify_keyboard(&report);
+            }
         }
     }
 
@@ -237,10 +249,13 @@ mod tests {
     #[derive(Default)]
     struct FakePeripheral {
         connected: bool,
+        keyboard: Vec<Vec<u8>>,
     }
 
     impl Peripheral for FakePeripheral {
-        fn notify_keyboard(&mut self, _: &[u8]) {}
+        fn notify_keyboard(&mut self, report: &[u8]) {
+            self.keyboard.push(report.to_vec());
+        }
         fn notify_mouse(&mut self, _: &[u8]) {}
         fn connected(&self) -> bool {
             self.connected
@@ -298,5 +313,29 @@ mod tests {
         bridge.peripheral.connected = false;
         bridge.subscription_changed();
         assert!(!bridge.active && !grabbed.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn held_keys_repeat_on_the_device_only_while_active() {
+        let mut bridge = Bridge::new(FakePeripheral::default(), HashSet::from([1]), 10.0, 2.0);
+        let info = DeviceInfo {
+            name: "kbd".into(),
+            path: PathBuf::from("/dev/null"),
+            kind: Kind::Keyboard,
+        };
+        let grabbed = Arc::new(AtomicBool::new(false));
+        let device = bridge.add(Box::new(FakeDevice { info, grabbed }), 0);
+        let backspace = keycode("BACKSPACE").unwrap();
+        bridge.event(device, EV_KEY, backspace, 1);
+        bridge.event(device, EV_KEY, backspace, 2);
+        assert!(bridge.peripheral.keyboard.is_empty());
+
+        bridge.event(device, EV_KEY, backspace, 0);
+
+        bridge.active = true;
+        bridge.event(device, EV_KEY, backspace, 1);
+        bridge.event(device, EV_KEY, backspace, 2);
+        let held = vec![0, 0, 0x2A, 0, 0, 0, 0, 0];
+        assert_eq!(bridge.peripheral.keyboard, [held.clone(), vec![0; 8], held]);
     }
 }
