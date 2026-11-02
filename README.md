@@ -15,11 +15,32 @@ Built for Wayland compositors with no input-capture portal (Niri): bluff reads
 - BlueZ 5.56+ with an adapter that supports the LE peripheral role
   (`bluetoothctl show` lists `peripheral` under `Roles`)
 - Membership in the `input` group, for `/dev/input/event*`
-- Rust 1.85 or later, to build it
+- Rust 1.85 or later, to build from source
 
 ## Use
 
-Install and run bluff as a user service tied to the graphical session:
+Download the package for your distribution from the
+[releases page](https://git.macalinao.org/jj/bluff/releases) and install it:
+
+```sh
+sudo apt install ./bluff_*_amd64.deb          # Debian, Ubuntu
+sudo dnf install ./bluff-*.x86_64.rpm         # Fedora
+sudo pacman -U bluff-*-x86_64.pkg.tar.zst     # Arch
+```
+
+Then add yourself to the `input` group (log out and back in after) and start
+bluff as a user service tied to the graphical session:
+
+```sh
+sudo usermod -aG input "$USER"
+systemctl --user enable --now bluff
+```
+
+On another distribution, unpack `bluff-*-x86_64-linux.tar.gz` and put
+`bluff` in `~/.local/bin` and `bluff.service` in `~/.config/systemd/user`.
+The release binaries need glibc 2.36 or later.
+
+To build from source instead:
 
 ```sh
 cargo install --path . --root ~/.local
@@ -55,7 +76,8 @@ subscribes again; any other connected device then pauses for a second or two. bl
 `~/.local/state/bluff/hosts`; devices paired before that file existed need
 their address added there by hand.
 
-After pulling changes: `cargo install --path . --root ~/.local --force` and
+After pulling changes to a source build:
+`cargo install --path . --root ~/.local --force` and
 `systemctl --user restart bluff`. Logs: `journalctl --user -u bluff -f`.
 
 If the device disconnects, input returns to the laptop on its own. Stopping
@@ -68,7 +90,10 @@ device's own pointer speed and natural-scrolling settings apply on top.
 ## Windows
 
 Needs Windows 11 24H2 or later and a Bluetooth adapter that supports the LE
-peripheral role. To build, install [rustup](https://rustup.rs) and unpack
+peripheral role. Download `bluff.exe` from the
+[releases page](https://git.macalinao.org/jj/bluff/releases).
+
+To build it yourself, install [rustup](https://rustup.rs) and unpack
 [llvm-mingw](https://github.com/mstorsjo/llvm-mingw/releases) (the
 `ucrt-x86_64` zip) with its `bin` folder on `PATH`, then from a clone:
 
@@ -77,9 +102,10 @@ rustup toolchain install stable-x86_64-pc-windows-gnullvm
 cargo +stable-x86_64-pc-windows-gnullvm build --release
 ```
 
-That gives a single `target\release\bluff.exe`; copy it anywhere. Run it from a
-terminal, or put a shortcut to it in `shell:startup` (set it to run minimized)
-to start it at sign-in. Closing its console window quits bluff.
+That gives a single `target\release\bluff.exe`.
+
+Copy `bluff.exe` anywhere. Run it from a terminal, or put a shortcut to it in
+`shell:startup` (set it to run minimized) to start it at sign-in. Closing its console window quits bluff.
 
 The tray icon and hotkey work as on Linux, with these differences:
 
@@ -105,3 +131,15 @@ The tray icon and hotkey work as on Linux, with these differences:
   need Apple's Magic Trackpad protocol. Use the Globe-key shortcuts instead.
 - Keyboards and mice plugged in after start are not picked up (Linux).
 - No clipboard sharing.
+
+## Releasing
+
+Bump `version` in `Cargo.toml`, commit, then tag and push:
+
+```sh
+git tag v0.2.0
+git push origin main v0.2.0
+```
+
+CI builds the Linux packages and `bluff.exe` and attaches them to a release
+for the tag. The tag must match the version in `Cargo.toml`.
