@@ -10,19 +10,26 @@ permissions:
 jobs:
   test:
     runs-on: docker
+    env:
+      LLVM_MINGW_VERSION: "20261020"
     steps:
       - uses: actions/checkout@v7
 
-      # The `docker` label maps to node:22-bookworm, which has gcc but no Rust.
-      - name: Install Rust
+      # The `docker` label maps to node:22-bookworm, which has gcc but no Rust
+      # or llvm-mingw.
+      - name: Install toolchains
         run: |
           set -eu
           curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --target x86_64-pc-windows-gnullvm
+          mingw="llvm-mingw-$LLVM_MINGW_VERSION-ucrt-ubuntu-22.04-x86_64"
+          curl -fsSL "https://github.com/mstorsjo/llvm-mingw/releases/download/$LLVM_MINGW_VERSION/$mingw.tar.xz" \
+            | tar xJ -C /opt
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          echo "/opt/$mingw/bin" >> "$GITHUB_PATH"
 
       - name: Test
         run: cargo test --locked
 
-      # Checking needs no linker, so the Windows code compiles here without llvm-mingw.
+      # build.rs compiles the exe's resources with llvm-mingw's windres.
       - name: Check Windows
         run: cargo check --locked --target x86_64-pc-windows-gnullvm
