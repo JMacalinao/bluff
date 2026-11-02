@@ -80,12 +80,12 @@ class Bridge[P: Peripheral]:
     def open(self, infos: list[DeviceInfo]) -> None:
         for info in infos:
             device = Device(info, self.event)
-            if info.kind is Kind.TOUCHPAD:
-                self._touchpads[device] = Touchpad(device.resolution(0), self._pixels_per_mm, self._mm_per_tick)
-            self.add(device)
+            self.add(device, device.resolution(0) if info.kind is Kind.TOUCHPAD else 0)
 
-    def add(self, device: Input) -> None:
-        """Take input from `device`, which feeds its events to `event`."""
+    def add(self, device: Input, resolution: int = 0) -> None:
+        """Take input from `device`, which feeds its events to `event`; `resolution` is a touchpad's units per mm."""
+        if device.info.kind is Kind.TOUCHPAD:
+            self._touchpads[device] = Touchpad(resolution, self._pixels_per_mm, self._mm_per_tick)
         self._devices.append(device)
         logger.info("using %s %r (%s)", device.info.kind, device.info.name, device.info.path)
 

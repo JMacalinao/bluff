@@ -62,6 +62,7 @@ async def _run(args: argparse.Namespace) -> None:
 async def _run_windows(args: argparse.Namespace) -> None:
     from bluff.windows.ble import Peripheral
     from bluff.windows.hooks import Hooks
+    from bluff.windows.touchpad import UNITS_PER_MM
     from bluff.windows.tray import Tray
 
     peripheral = Peripheral()
@@ -73,10 +74,16 @@ async def _run_windows(args: argparse.Namespace) -> None:
     hooks = Hooks(bridge.event)
     bridge.add(hooks.keyboard)
     bridge.add(hooks.mouse)
+    bridge.add(hooks.touchpad, UNITS_PER_MM)
     quit = asyncio.Event()
     Tray(bridge, quit).start()
     logger.info("press and release the hotkey to switch")
-    await quit.wait()
+    try:
+        await quit.wait()
+    finally:
+        # Hooks die with the process, but the touchpad's scrolling setting has to be put back.
+        if bridge.active:
+            bridge.set_active(False)
 
 
 async def _ask_terminal(question: str) -> bool:
