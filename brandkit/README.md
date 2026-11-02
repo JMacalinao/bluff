@@ -11,7 +11,7 @@ Open `index.html` in a browser for the visual guide, or `board.png` for the one-
 | `logo/` | Horizontal logos, transparent marks, README logo and app icon; SVG and PNG |
 | `colors.json` | Palette and role restrictions |
 | `fonts/` | Space Grotesk, Geist, and IBM Plex Mono with SIL OFL notices |
-| `build.py` | Generates every asset above, plus the tray pixmaps in `../src/bluff/icons/` |
+| `build.py` | Generates every asset above, plus the tray pixmaps in `../src/icons/` |
 
 ## Direction
 

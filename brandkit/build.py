@@ -22,7 +22,7 @@ from shapely.geometry.base import BaseGeometry
 KIT = Path(__file__).parent
 LOGO = KIT / "logo"
 FONTS = KIT / "fonts"
-TRAY = KIT.parent / "src" / "bluff" / "icons"
+TRAY = KIT.parent / "src" / "icons"
 COLORS = json.loads((KIT / "colors.json").read_text())["colors"]
 FELT, BAIZE = COLORS["felt"], COLORS["baize"]
 GRAPHITE, CHARCOAL, SILVER, PAPER = COLORS["graphite"], COLORS["charcoal"], COLORS["silver"], COLORS["paper"]

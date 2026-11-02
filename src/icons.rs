@@ -20,10 +20,10 @@ pub struct Frame {
 /// The frames of an icon, as built by brandkit/build.py.
 pub fn pixmaps(icon: Icon) -> Vec<Frame> {
     let mut data: &'static [u8] = match icon {
-        Icon::Disconnected => include_bytes!("bluff/icons/tray-disconnected.argb"),
-        Icon::Laptop => include_bytes!("bluff/icons/tray-laptop.argb"),
-        Icon::Ipad => include_bytes!("bluff/icons/tray-ipad.argb"),
-        Icon::Pairing => include_bytes!("bluff/icons/tray-pairing.argb"),
+        Icon::Disconnected => include_bytes!("icons/tray-disconnected.argb"),
+        Icon::Laptop => include_bytes!("icons/tray-laptop.argb"),
+        Icon::Ipad => include_bytes!("icons/tray-ipad.argb"),
+        Icon::Pairing => include_bytes!("icons/tray-pairing.argb"),
     };
     let mut frames = Vec::new();
     while let Some((header, rest)) = data.split_first_chunk::<8>() {
