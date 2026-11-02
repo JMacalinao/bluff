@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Turn a laptop into a Bluetooth keyboard and mouse for a tablet or phone"
 edition = "2024"
 rust-version = "1.85"
+license = "Apache-2.0"
 
 [dependencies]
 clap = { version = "4.6.7", features = ["derive"] }

@@ -5,6 +5,7 @@ version: ${VERSION}
 maintainer: JJ Macalinao <jj@noreply.git.macalinao.org>
 description: Turn a laptop into a Bluetooth keyboard and mouse for a tablet or phone
 homepage: https://git.macalinao.org/jj/bluff
+license: Apache-2.0
 depends:
   - bluez
 contents:
@@ -12,3 +13,5 @@ contents:
     dst: /usr/bin/bluff
   - src: target/package/bluff.service
     dst: /usr/lib/systemd/user/bluff.service
+  - src: LICENSE
+    dst: /usr/share/licenses/bluff/LICENSE

@@ -143,3 +143,8 @@ git push origin main v0.2.0
 
 CI builds the Linux packages and `bluff.exe` and attaches them to a release
 for the tag. The tag must match the version in `Cargo.toml`.
+
+## License
+
+Apache License 2.0; see [`LICENSE`](LICENSE). The fonts in `brandkit/fonts` keep
+their own licenses, next to each font.

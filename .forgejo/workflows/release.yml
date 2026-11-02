@@ -60,7 +60,7 @@ jobs:
             nfpm package -f contrib/nfpm.yaml -p "$packager" -t dist/
           done
           tar czf "dist/bluff-$VERSION-x86_64-linux.tar.gz" \
-            -C target/release bluff -C ../../contrib bluff.service
+            LICENSE -C target/release bluff -C ../../contrib bluff.service
           cp target/x86_64-pc-windows-gnullvm/release/bluff.exe dist/
           (cd dist && sha256sum * > SHA256SUMS)
           ls -l dist
