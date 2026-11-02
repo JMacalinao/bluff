@@ -39,7 +39,8 @@ def _arguments() -> argparse.Namespace:
 async def _run(args: argparse.Namespace) -> None:
     # Each platform's modules import libraries that only install there.
     if sys.platform == "win32":
-        raise SystemExit("Windows support is not wired up yet")
+        await _run_windows(args)
+        return
     from bluff.ble import Peripheral
     from bluff.evdev import discover
     from bluff.tray import start_tray
@@ -54,6 +55,26 @@ async def _run(args: argparse.Namespace) -> None:
     await start_tray(bridge, quit)
     if args.pair:
         logger.info("pick %r in the device's Bluetooth settings", args.name)
+    logger.info("press and release the hotkey to switch")
+    await quit.wait()
+
+
+async def _run_windows(args: argparse.Namespace) -> None:
+    from bluff.windows.ble import Peripheral
+    from bluff.windows.hooks import Hooks
+    from bluff.windows.tray import Tray
+
+    peripheral = Peripheral()
+    await peripheral.start()
+    if args.pair:
+        await peripheral.set_pairing(True)
+        logger.info("pick this computer in the device's Bluetooth settings; Windows asks to confirm")
+    bridge = Bridge(peripheral, args.hotkey, args.pixels_per_mm, args.mm_per_tick)
+    hooks = Hooks(bridge.event)
+    bridge.add(hooks.keyboard)
+    bridge.add(hooks.mouse)
+    quit = asyncio.Event()
+    Tray(bridge, quit).start()
     logger.info("press and release the hotkey to switch")
     await quit.wait()
 
