@@ -1,0 +1,28 @@
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: docker
+    steps:
+      - uses: actions/checkout@v7
+
+      # The `docker` label maps to node:22-bookworm, which has gcc but no Rust.
+      - name: Install Rust
+        run: |
+          set -eu
+          curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --target x86_64-pc-windows-gnullvm
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Test
+        run: cargo test --locked
+
+      # Checking needs no linker, so the Windows code compiles here without llvm-mingw.
+      - name: Check Windows
+        run: cargo check --locked --target x86_64-pc-windows-gnullvm
