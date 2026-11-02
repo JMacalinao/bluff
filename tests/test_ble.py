@@ -94,3 +94,20 @@ async def test_hosts_without_a_socket_are_disconnected_once() -> None:
     await peripheral._nudge_unsubscribed()
     await peripheral._nudge_unsubscribed()
     assert calls == [("/b", "Disconnect")]
+
+
+@pytest.mark.asyncio
+async def test_no_nudge_right_after_another_registration() -> None:
+    calls: list[tuple[str, str]] = []
+
+    class Bus:
+        async def call(self, message: Message) -> None:
+            calls.append((message.path or "", message.member or ""))
+
+    peripheral = Peripheral("test")
+    peripheral._bus = cast(MessageBus, Bus())
+    peripheral.hosts.hosts = {"/a": Host("/a", "A", "iPad", True)}
+    peripheral._registered_at = asyncio.get_running_loop().time()
+
+    await peripheral._nudge_unsubscribed()
+    assert calls == []

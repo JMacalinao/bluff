@@ -377,6 +377,10 @@ class Peripheral:
         # Android ignores Service Changed while connected and only rediscovers, and so
         # subscribes, when it reconnects. A disconnect is not a rejection: it comes right back.
         now = asyncio.get_running_loop().time()
+        # A newer registration just dropped every socket; hosts are still subscribing again,
+        # and that registration nudges the ones that do not once they had the time.
+        if now - self._registered_at < RESUBSCRIBE_SECONDS:
+            return
         for host in list(self.hosts.hosts.values()):
             if self._bus is None or not host.connected or host.path in self.keyboard.sockets:
                 continue
