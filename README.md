@@ -15,14 +15,14 @@ Built for Wayland compositors with no input-capture portal (Niri): bluff reads
 - BlueZ 5.56+ with an adapter that supports the LE peripheral role
   (`bluetoothctl show` lists `peripheral` under `Roles`)
 - Membership in the `input` group, for `/dev/input/event*`
-- Python 3.14 and uv
+- Rust 1.85 or later, to build it
 
 ## Use
 
 Install and run bluff as a user service tied to the graphical session:
 
 ```sh
-uv tool install .
+cargo install --path . --root ~/.local
 install -Dm644 contrib/bluff.service ~/.config/systemd/user/bluff.service
 systemctl --user enable --now bluff
 ```
@@ -39,6 +39,10 @@ extension).
 4. Click the tray icon, or press and release Ctrl+Alt+Super together, to
    send input to the device. Press the hotkey again to take it back.
 
+iPadOS does not repeat keys held on bluff, so bluff repeats them itself at the
+laptop's key repeat rate. Held letters repeat too, where an Apple keyboard
+would show the accent picker.
+
 Outside pairing mode bluff is not discoverable and refuses every pairing
 request; a bonded device reconnects on its own. Without a tray, stop the
 service and run `bluff --pair` in a terminal to pair there instead.
@@ -51,7 +55,7 @@ subscribes again; any other connected device then pauses for a second or two. bl
 `~/.local/state/bluff/hosts`; devices paired before that file existed need
 their address added there by hand.
 
-After pulling changes: `uv tool install --reinstall .` and
+After pulling changes: `cargo install --path . --root ~/.local --force` and
 `systemctl --user restart bluff`. Logs: `journalctl --user -u bluff -f`.
 
 If the device disconnects, input returns to the laptop on its own. Stopping
@@ -63,16 +67,19 @@ device's own pointer speed and natural-scrolling settings apply on top.
 
 ## Windows
 
-Needs Windows 11 24H2 or later, a Bluetooth adapter that supports the LE
-peripheral role, Python 3.14 and uv. Install from a clone:
+Needs Windows 11 24H2 or later and a Bluetooth adapter that supports the LE
+peripheral role. To build, install [rustup](https://rustup.rs) and unpack
+[llvm-mingw](https://github.com/mstorsjo/llvm-mingw/releases) (the
+`ucrt-x86_64` zip) with its `bin` folder on `PATH`, then from a clone:
 
 ```powershell
-uv tool install .
+rustup toolchain install stable-x86_64-pc-windows-gnullvm
+cargo +stable-x86_64-pc-windows-gnullvm build --release
 ```
 
-Run `bluff` from a terminal, or put a shortcut to
-`%USERPROFILE%\.local\bin\bluff.exe` in `shell:startup` (set it to run
-minimized) to start it at sign-in. Closing its console window quits bluff.
+That gives a single `target\release\bluff.exe`; copy it anywhere. Run it from a
+terminal, or put a shortcut to it in `shell:startup` (set it to run minimized)
+to start it at sign-in. Closing its console window quits bluff.
 
 The tray icon and hotkey work as on Linux, with these differences:
 
