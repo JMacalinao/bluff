@@ -164,28 +164,8 @@ git tag v0.2.0
 git push origin main v0.2.0
 ```
 
-Forgejo CI builds the Linux packages and creates a release for the tag. The
-tag must match the version in `Cargo.toml`. The tag also reaches the GitHub
-mirror, where `.github/workflows/sign-windows.yml` builds `bluff.exe` and
-submits it to SignPath. Approve the signing request in SignPath within four
-hours, and the workflow attaches the signed exe to the Forgejo release.
-
-## Code signing policy
-
-Free code signing for the Windows build is provided by
-[SignPath.io](https://about.signpath.io), with a certificate by
-[SignPath Foundation](https://signpath.org).
-
-- Committers and reviewers: [JJ Macalinao](https://git.macalinao.org/jj)
-- Approvers: [JJ Macalinao](https://git.macalinao.org/jj)
-
-Only `bluff.exe` built by `.github/workflows/sign-windows.yml` from a tag in
-this repository is signed. The SignPath artifact configuration is in
-`.signpath/artifact-configuration.xml`.
-
-Privacy: bluff makes no network connections and collects no data. It sends
-keyboard and mouse input only over Bluetooth, only to the device you paired
-and picked, and only while that device has control.
+CI builds the Linux packages and `bluff.exe` and attaches them to a release
+for the tag. The tag must match the version in `Cargo.toml`.
 
 ## License
 
