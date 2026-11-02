@@ -28,10 +28,11 @@ jobs:
           echo "VERSION=$version" >> "$GITHUB_ENV"
 
       # The `docker` label maps to node:22-bookworm, which has gcc but no Rust,
-      # llvm-mingw or nfpm.
+      # llvm-mingw, nfpm or zip.
       - name: Install toolchains
         run: |
           set -eu
+          apt-get update -q && apt-get install -yq --no-install-recommends zip
           curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --target x86_64-pc-windows-gnullvm
           mingw="llvm-mingw-$LLVM_MINGW_VERSION-ucrt-ubuntu-22.04-x86_64"
           curl -fsSL "https://github.com/mstorsjo/llvm-mingw/releases/download/$LLVM_MINGW_VERSION/$mingw.tar.xz" \
@@ -61,7 +62,8 @@ jobs:
           done
           tar czf "dist/bluff-$VERSION-x86_64-linux.tar.gz" \
             LICENSE -C target/release bluff -C ../../contrib bluff.service
-          cp target/x86_64-pc-windows-gnullvm/release/bluff.exe dist/
+          zip -j "dist/bluff-$VERSION-x86_64-windows.zip" \
+            target/x86_64-pc-windows-gnullvm/release/bluff.exe README.md LICENSE
           (cd dist && sha256sum * > SHA256SUMS)
           ls -l dist
 

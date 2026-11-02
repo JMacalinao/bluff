@@ -90,8 +90,9 @@ device's own pointer speed and natural-scrolling settings apply on top.
 ## Windows
 
 Needs Windows 11 24H2 or later and a Bluetooth adapter that supports the LE
-peripheral role. Download `bluff.exe` from the
-[releases page](https://git.macalinao.org/jj/bluff/releases).
+peripheral role. Download `bluff-*-x86_64-windows.zip` from the
+[releases page](https://git.macalinao.org/jj/bluff/releases) and extract
+`bluff.exe` from it.
 
 To build it yourself, install [rustup](https://rustup.rs) and unpack
 [llvm-mingw](https://github.com/mstorsjo/llvm-mingw/releases) (the
@@ -164,7 +165,7 @@ git tag v0.2.0
 git push origin main v0.2.0
 ```
 
-CI builds the Linux packages and `bluff.exe` and attaches them to a release
+CI builds the Linux packages and the Windows zip and attaches them to a release
 for the tag. The tag must match the version in `Cargo.toml`.
 
 ## License
