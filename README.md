@@ -148,6 +148,23 @@ On Windows, pick "Quit bluff" in the tray menu, delete its shortcut from
 Then forget bluff in the device's Bluetooth settings, and remove the device
 from the laptop's.
 
+## If pairing fails
+
+If the device shows bluff as connected and then drops the pairing a moment
+later, the laptop's Bluetooth controller may still hold keys from an earlier
+pairing with that device. This can happen after the device forgot bluff while
+BlueZ failed to clear the device from the controller. Turn the adapter off and
+on, then pair again:
+
+```sh
+bluetoothctl power off
+bluetoothctl power on
+```
+
+Other Bluetooth devices, such as headphones, disconnect for a moment. To
+confirm the cause first, run `sudo btmon` during a pairing attempt: it shows
+`SMP: Pairing Failed` with `Reason: DHKey check failed (0x0b)`.
+
 ## Limits
 
 - One finger moves, two fingers scroll, click with two fingers to right-click.
