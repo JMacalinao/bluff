@@ -1,6 +1,6 @@
 //! BlueZ GATT server, advertisement and pairing agent for a HID-over-GATT peripheral.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::future::Future;
 use std::io::{self, Read};
@@ -233,13 +233,20 @@ impl Peripheral {
         true
     }
 
-    /// Connected hosts with no keyboard socket that were not nudged within `NUDGE`.
-    fn unsubscribed(&self, nudged: &HashMap<String, Instant>, now: Instant) -> Vec<Host> {
+    /// Hosts on an LE link in `le`, or connected ones when that is unknown, with no keyboard
+    /// socket and not nudged within `NUDGE`.
+    fn unsubscribed(
+        &self,
+        nudged: &HashMap<String, Instant>,
+        le: Option<&HashSet<String>>,
+        now: Instant,
+    ) -> Vec<Host> {
         let mut hosts: Vec<Host> = self
             .hosts
             .hosts
             .values()
             .filter(|host| host.connected && !self.keyboard.sockets.contains_key(&host.path))
+            .filter(|host| le.is_none_or(|le| le.contains(&host.address)))
             .filter(|host| {
                 nudged
                     .get(&host.path)
@@ -295,6 +302,68 @@ fn socketpair() -> io::Result<(OwnedFd, OwnedFd)> {
         }
         Ok((OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1])))
     }
+}
+
+/// Addresses with an LE link on `adapter`, asked of the kernel: BlueZ's `Connected` is also true
+/// for a BR/EDR link alone, and its per-bearer state is experimental.
+fn le_links(adapter: &str) -> io::Result<HashSet<String>> {
+    use std::os::fd::FromRawFd;
+    const BTPROTO_HCI: libc::c_int = 1;
+    // _IOR('H', 212, int)
+    const HCIGETCONNLIST: libc::c_ulong = 0x8004_48d4;
+    const LE_LINK: u8 = 0x80;
+    const MAX: usize = 32;
+    #[repr(C)]
+    #[derive(Clone, Copy, Default)]
+    struct ConnInfo {
+        handle: u16,
+        address: [u8; 6],
+        kind: u8,
+        out: u8,
+        state: u16,
+        link_mode: u32,
+    }
+    #[repr(C)]
+    struct ConnList {
+        dev_id: u16,
+        count: u16,
+        info: [ConnInfo; MAX],
+    }
+    let dev_id = adapter
+        .rsplit_once("hci")
+        .and_then(|(_, id)| id.parse().ok())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "not an hci adapter"))?;
+    let mut list = ConnList {
+        dev_id,
+        count: MAX as u16,
+        info: [ConnInfo::default(); MAX],
+    };
+    // SAFETY: the fd is owned right away, and the ioctl writes at most `count` entries into `list`.
+    unsafe {
+        let fd = libc::socket(
+            libc::AF_BLUETOOTH,
+            libc::SOCK_RAW | libc::SOCK_CLOEXEC,
+            BTPROTO_HCI,
+        );
+        if fd < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        let fd = OwnedFd::from_raw_fd(fd);
+        if libc::ioctl(fd.as_raw_fd(), HCIGETCONNLIST as _, &mut list) < 0 {
+            return Err(io::Error::last_os_error());
+        }
+    }
+    Ok(list.info[..usize::from(list.count).min(MAX)]
+        .iter()
+        .filter(|info| info.kind == LE_LINK)
+        .map(|info| address(info.address))
+        .collect())
+}
+
+/// BlueZ's form of a little-endian address.
+fn address(bytes: [u8; 6]) -> String {
+    let parts: Vec<String> = bytes.iter().rev().map(|b| format!("{b:02X}")).collect();
+    parts.join(":")
 }
 
 fn random_uuid() -> io::Result<String> {
@@ -887,6 +956,13 @@ impl Ble {
         bridge.subscription_changed();
     }
 
+    /// Addresses with an LE link, or None when the kernel cannot say.
+    fn le_links(&self) -> Option<HashSet<String>> {
+        le_links(&self.inner.adapter)
+            .inspect_err(|error| warn!("could not list LE links: {error}"))
+            .ok()
+    }
+
     fn host_connected(&self, device: String) {
         let ble = self.clone();
         tokio::spawn(async move {
@@ -903,12 +979,17 @@ impl Ble {
         sleep(RESUBSCRIBE).await;
         {
             let mut registration = self.inner.registration.lock().await;
+            let le = self.le_links();
             let name = {
                 let bridge = lock(&self.inner.shared);
                 let Some(host) = bridge.peripheral.hosts.hosts.get(device) else {
                     return Ok(());
                 };
                 if !host.connected || bridge.peripheral.keyboard.sockets.contains_key(device) {
+                    return Ok(());
+                }
+                // A dual-mode host back on BR/EDR only, say for audio, has nothing to subscribe on.
+                if le.is_some_and(|le| !le.contains(&host.address)) {
                     return Ok(());
                 }
                 host.name.clone()
@@ -955,6 +1036,8 @@ impl Ble {
         if self.inner.registration.lock().await.recent(now) {
             return;
         }
+        // Disconnecting a host on BR/EDR only cuts its audio, and it comes back on BR/EDR again.
+        let le = self.le_links();
         let hosts = {
             let mut nudged = self
                 .inner
@@ -963,7 +1046,7 @@ impl Ble {
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             let hosts = lock(&self.inner.shared)
                 .peripheral
-                .unsubscribed(&nudged, now);
+                .unsubscribed(&nudged, le.as_ref(), now);
             nudged.extend(hosts.iter().map(|host| (host.path.clone(), now)));
             hosts
         };
@@ -1156,7 +1239,7 @@ mod tests {
         let (mut peripheral, _) = peripheral("nudge");
         let _a = peripheral.acquire(Which::Keyboard, "/d/a").unwrap();
         let now = Instant::now();
-        let hosts = peripheral.unsubscribed(&HashMap::new(), now);
+        let hosts = peripheral.unsubscribed(&HashMap::new(), None, now);
         assert_eq!(
             hosts.iter().map(|h| h.path.as_str()).collect::<Vec<_>>(),
             ["/d/b"]
@@ -1164,10 +1247,29 @@ mod tests {
         let nudged = HashMap::from([("/d/b".to_string(), now)]);
         assert!(
             peripheral
-                .unsubscribed(&nudged, now + Duration::from_secs(60))
+                .unsubscribed(&nudged, None, now + Duration::from_secs(60))
                 .is_empty()
         );
-        assert_eq!(peripheral.unsubscribed(&nudged, now + NUDGE).len(), 1);
+        assert_eq!(peripheral.unsubscribed(&nudged, None, now + NUDGE).len(), 1);
+    }
+
+    #[test]
+    fn hosts_on_br_edr_only_are_not_nudged() {
+        let (peripheral, _) = peripheral("bredr");
+        let le = HashSet::from(["AA".to_string()]);
+        let hosts = peripheral.unsubscribed(&HashMap::new(), Some(&le), Instant::now());
+        assert_eq!(
+            hosts.iter().map(|h| h.path.as_str()).collect::<Vec<_>>(),
+            ["/d/a"]
+        );
+    }
+
+    #[test]
+    fn addresses_read_most_significant_byte_first() {
+        assert_eq!(
+            address([0xBD, 0xE0, 0x4F, 0x16, 0xEE, 0x34]),
+            "34:EE:16:4F:E0:BD"
+        );
     }
 
     #[test]
