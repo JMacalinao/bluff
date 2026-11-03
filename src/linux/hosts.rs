@@ -110,6 +110,11 @@ impl Hosts {
         self.accepted.insert(path.to_string());
     }
 
+    /// Whether `path` is a host or a device the agent just let pair.
+    pub fn owns(&self, path: &str) -> bool {
+        self.hosts.contains_key(path) || self.accepted.contains(path)
+    }
+
     /// Take in a device from GetManagedObjects or a signal; only stored addresses become hosts.
     pub fn update(&mut self, path: &str, props: &Props) {
         if !self.hosts.contains_key(path) {

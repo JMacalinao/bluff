@@ -367,6 +367,12 @@ fn address(bytes: [u8; 6]) -> String {
     parts.join(":")
 }
 
+fn is_on(props: &Props, property: &str) -> bool {
+    props
+        .get(property)
+        .is_some_and(|v| bool::try_from(v) == Ok(true))
+}
+
 fn random_uuid() -> io::Result<String> {
     let mut bytes = [0u8; 16];
     File::open("/dev/urandom")?.read_exact(&mut bytes)?;
@@ -637,7 +643,15 @@ impl Agent {
         self.confirm(&device, question).await
     }
 
-    fn authorize_service(&self, _device: OwnedObjectPath, _uuid: String) {}
+    fn authorize_service(&self, device: OwnedObjectPath, uuid: String) -> Result<(), AgentError> {
+        // A host with audio connected gets it back after every resume, over BR/EDR, and an iPad
+        // then never reconnects over LE. bluff's hosts only need LE, which never asks.
+        if lock(&self.shared).peripheral.hosts.owns(device.as_str()) {
+            info!("refused {uuid} for {device}; bluff's hosts only use LE");
+            return Err(AgentError::Rejected("bluff's hosts only use LE".into()));
+        }
+        Ok(())
+    }
 
     fn cancel(&self) {
         info!("pairing cancelled");
@@ -847,7 +861,7 @@ impl Ble {
             .get_managed_objects()
             .await?;
         let prefix = format!("{}/", self.inner.adapter);
-        let mut blocked = Vec::new();
+        let mut switch_off = Vec::new();
         {
             let mut bridge = lock(&self.inner.shared);
             let hosts = &mut bridge.peripheral.hosts;
@@ -859,20 +873,20 @@ impl Ble {
                     continue;
                 }
                 hosts.update(object.as_str(), props);
-                if hosts.hosts.contains_key(object.as_str())
-                    && props
-                        .get("Blocked")
-                        .is_some_and(|v| bool::try_from(v) == Ok(true))
-                {
-                    blocked.push(object.to_string());
+                if hosts.hosts.contains_key(object.as_str()) {
+                    for property in ["Blocked", "Trusted"] {
+                        if is_on(props, property) {
+                            switch_off.push((object.to_string(), property));
+                        }
+                    }
                 }
             }
             for host in hosts.hosts.values().filter(|host| host.connected) {
                 self.host_connected(host.path.clone());
             }
         }
-        for device in blocked {
-            self.unblock(&device).await;
+        for (device, property) in switch_off {
+            self.switch_off(&device, property).await;
         }
         let ble = self.clone();
         tokio::spawn(async move {
@@ -934,9 +948,12 @@ impl Ble {
         Ok(())
     }
 
-    async fn unblock(&self, device: &str) {
-        // Earlier versions blocked the hosts that were not chosen.
-        let blocked = async {
+    /// Clear a host's `Blocked` or `Trusted`.
+    ///
+    /// Earlier versions blocked the hosts that were not chosen. A trusted host connects BR/EDR
+    /// profiles without asking the agent, so it would come back on audio after every resume.
+    async fn switch_off(&self, device: &str, property: &'static str) {
+        let switched = async {
             let props = PropertiesProxy::builder(&self.inner.conn)
                 .destination(BLUEZ)?
                 .path(device)?
@@ -945,15 +962,15 @@ impl Ble {
             props
                 .set(
                     InterfaceName::from_static_str_unchecked(DEVICE),
-                    "Blocked",
+                    property,
                     Value::from(false),
                 )
                 .await?;
             zbus::Result::Ok(())
         };
-        match blocked.await {
-            Ok(()) => info!("unblocked {device}"),
-            Err(error) => warn!("could not unblock {device}: {error}"),
+        match switched.await {
+            Ok(()) => info!("switched {property} off for {device}"),
+            Err(error) => warn!("could not switch {property} off for {device}: {error}"),
         }
     }
 
@@ -972,9 +989,14 @@ impl Ble {
         };
         match props.await {
             Ok(props) => {
-                let mut bridge = lock(&self.inner.shared);
-                bridge.peripheral.hosts.adopt(&device, &props);
-                bridge.subscription_changed();
+                {
+                    let mut bridge = lock(&self.inner.shared);
+                    bridge.peripheral.hosts.adopt(&device, &props);
+                    bridge.subscription_changed();
+                }
+                if is_on(&props, "Trusted") {
+                    self.switch_off(&device, "Trusted").await;
+                }
             }
             Err(error) => warn!("could not read the new host {device}: {error}"),
         }
@@ -1193,6 +1215,23 @@ mod tests {
         let agent = Agent { shared };
         let device = OwnedObjectPath::try_from("/d/c").unwrap();
         assert!(agent.confirm(&device, "pair?".into()).await.is_err());
+    }
+
+    #[test]
+    fn agent_refuses_services_for_hosts_only() {
+        let (peripheral, _) = peripheral("services");
+        let shared = Arc::new(Mutex::new(Bridge::new(
+            peripheral,
+            HashSet::new(),
+            10.0,
+            2.0,
+        )));
+        let agent = Agent { shared };
+        let service = |device| {
+            agent.authorize_service(OwnedObjectPath::try_from(device).unwrap(), "110a".into())
+        };
+        assert!(service("/d/a").is_err());
+        assert!(service("/d/headphones").is_ok());
     }
 
     #[tokio::test]
