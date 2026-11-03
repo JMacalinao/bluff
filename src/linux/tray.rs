@@ -594,12 +594,17 @@ mod tests {
         let hosts = &mut bridge.peripheral.hosts;
         hosts.update(
             "/b",
-            &device(&[("Address", "B".into()), ("Alias", "iPad".into())]),
+            &device(&[
+                ("Address", "B".into()),
+                ("Paired", true.into()),
+                ("Alias", "iPad".into()),
+            ]),
         );
         hosts.update(
             "/a",
             &device(&[
                 ("Address", "A".into()),
+                ("Paired", true.into()),
                 ("Alias", "Fold".into()),
                 ("Connected", true.into()),
             ]),
@@ -623,11 +628,19 @@ mod tests {
         let hosts = &mut bridge.peripheral.hosts;
         hosts.update(
             "/a",
-            &device(&[("Address", "A".into()), ("Connected", true.into())]),
+            &device(&[
+                ("Address", "A".into()),
+                ("Paired", true.into()),
+                ("Connected", true.into()),
+            ]),
         );
         hosts.update(
             "/b",
-            &device(&[("Address", "B".into()), ("Connected", true.into())]),
+            &device(&[
+                ("Address", "B".into()),
+                ("Paired", true.into()),
+                ("Connected", true.into()),
+            ]),
         );
         hosts.chosen_address = "A".into();
         let _b = bridge

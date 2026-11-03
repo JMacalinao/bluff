@@ -1150,11 +1150,19 @@ mod tests {
         let mut hosts = Hosts::load(store);
         hosts.update(
             "/d/a",
-            &props(&[("Address", "AA".into()), ("Connected", true.into())]),
+            &props(&[
+                ("Address", "AA".into()),
+                ("Paired", true.into()),
+                ("Connected", true.into()),
+            ]),
         );
         hosts.update(
             "/d/b",
-            &props(&[("Address", "BB".into()), ("Connected", true.into())]),
+            &props(&[
+                ("Address", "BB".into()),
+                ("Paired", true.into()),
+                ("Connected", true.into()),
+            ]),
         );
         Peripheral::new(hosts)
     }

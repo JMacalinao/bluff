@@ -114,7 +114,9 @@ impl Hosts {
     pub fn update(&mut self, path: &str, props: &Props) {
         if !self.hosts.contains_key(path) {
             let address = string(props, "Address").unwrap_or_default();
-            if !self.addresses.contains(&address) {
+            // BlueZ can keep a second, unpaired object for a host it first saw at a private
+            // address. It shares the address, never subscribes, and disconnecting it drops the host.
+            if !self.addresses.contains(&address) || boolean(props, "Paired") != Some(true) {
                 return;
             }
             let host = Host {
@@ -205,7 +207,11 @@ pub(crate) mod tests {
         let mut hosts = hosts("stored", "AA\n");
         hosts.update(
             "/d/a",
-            &props(&[("Address", "AA".into()), ("Alias", "iPad".into())]),
+            &props(&[
+                ("Address", "AA".into()),
+                ("Paired", true.into()),
+                ("Alias", "iPad".into()),
+            ]),
         );
         hosts.update(
             "/d/b",
@@ -216,9 +222,26 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn an_unpaired_object_with_a_host_address_is_no_host() {
+        let mut hosts = hosts("unpaired", "AA\n");
+        hosts.update(
+            "/d/a",
+            &props(&[("Address", "AA".into()), ("Paired", true.into())]),
+        );
+        hosts.update(
+            "/d/rpa",
+            &props(&[("Address", "AA".into()), ("Paired", false.into())]),
+        );
+        assert_eq!(hosts.hosts.keys().collect::<Vec<_>>(), ["/d/a"]);
+    }
+
+    #[test]
     fn choose_stores_the_choice() {
         let mut hosts = hosts("choose", "AA\n");
-        hosts.update("/d/a", &props(&[("Address", "AA".into())]));
+        hosts.update(
+            "/d/a",
+            &props(&[("Address", "AA".into()), ("Paired", true.into())]),
+        );
         hosts.choose("/d/a");
         assert_eq!(hosts.chosen().unwrap().path, "/d/a");
         assert_eq!(Hosts::load(hosts.store.clone()).chosen_address, "AA");
@@ -229,7 +252,11 @@ pub(crate) mod tests {
         let mut hosts = hosts("reconnect", "AA\n");
         hosts.update(
             "/d/a",
-            &props(&[("Address", "AA".into()), ("Connected", false.into())]),
+            &props(&[
+                ("Address", "AA".into()),
+                ("Paired", true.into()),
+                ("Connected", false.into()),
+            ]),
         );
         let change = hosts.properties_changed("/d/a", &props(&[("Connected", true.into())]));
         assert_eq!(change, Change::Host { connected: true });
@@ -260,6 +287,7 @@ pub(crate) mod tests {
             "/d/c",
             &props(&[
                 ("Address", "CC".into()),
+                ("Paired", true.into()),
                 ("Alias", "Fold".into()),
                 ("Connected", true.into()),
             ]),
