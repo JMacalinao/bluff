@@ -80,6 +80,8 @@ their address added there by hand.
 After pulling changes to a source build:
 `cargo install --path . --root ~/.local --force` and
 `systemctl --user restart bluff`. Logs: `journalctl --user -u bluff -f`.
+`bluff --version` prints the version; the tray menu and the first log line
+show it too.
 
 If the device disconnects, input returns to the laptop on its own. Stopping
 bluff releases the grab too.

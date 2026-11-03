@@ -33,6 +33,7 @@ pub const STATUS: i32 = 1;
 pub const TOGGLE: i32 = 2;
 pub const PAIR: i32 = 3;
 pub const QUIT: i32 = 4;
+pub const VERSION: i32 = 5;
 pub const FIRST_HOST_ITEM: i32 = 100;
 
 type Props = HashMap<String, OwnedValue>;
@@ -88,6 +89,10 @@ pub fn menu(bridge: &Bridge<Peripheral>) -> Vec<(i32, Props)> {
         "Pair a new device…"
     };
     items.push((PAIR, props([("label", pair.into())])));
+    items.push((
+        VERSION,
+        props([("label", crate::VERSION.into()), ("enabled", false.into())]),
+    ));
     items.push((QUIT, props([("label", "Quit bluff".into())])));
     items
 }
@@ -586,6 +591,17 @@ mod tests {
             .unwrap();
         assert_eq!(icon(&bridge), Icon::Laptop);
         assert_eq!(item(&bridge, TOGGLE)["enabled"], OwnedValue::from(true));
+    }
+
+    #[test]
+    fn menu_shows_the_version() {
+        let bridge = bridge("version");
+        let version = item(&bridge, VERSION);
+        assert_eq!(
+            version["label"],
+            OwnedValue::try_from(Value::from(crate::VERSION)).unwrap()
+        );
+        assert_eq!(version["enabled"], OwnedValue::from(false));
     }
 
     #[test]

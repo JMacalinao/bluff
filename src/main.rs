@@ -4,7 +4,7 @@
 use std::process::ExitCode;
 
 use clap::Parser;
-use log::error;
+use log::{error, info};
 
 use bluff::cli::{Args, init_logging};
 
@@ -25,6 +25,7 @@ async fn main() -> ExitCode {
     .is_ok();
     init_logging();
     let args = Args::parse();
+    info!("{}", bluff::VERSION);
     #[cfg(target_os = "linux")]
     let result = bluff::linux::run(args).await;
     #[cfg(windows)]

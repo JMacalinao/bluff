@@ -10,7 +10,7 @@ pub type Error = Box<dyn std::error::Error + Send + Sync>;
 
 /// Be a Bluetooth keyboard and mouse for a tablet or phone.
 #[derive(Parser)]
-#[command(name = "bluff")]
+#[command(name = "bluff", version)]
 pub struct Args {
     /// name the device shows when pairing
     #[arg(long, default_value = "bluff")]

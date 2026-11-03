@@ -65,6 +65,7 @@ fn menu(bridge: &Bridge<Peripheral>) -> Menu {
         "Pair a new device…"
     };
     items.push(Box::new(MenuItem::with_id(PAIR, pair, true, None)));
+    items.push(Box::new(MenuItem::new(crate::VERSION, false, None)));
     items.push(Box::new(MenuItem::with_id(QUIT, "Quit bluff", true, None)));
     for item in &items {
         let _ = menu.append(item.as_ref());
