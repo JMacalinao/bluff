@@ -515,6 +515,11 @@ impl ReportCharacteristic {
             .get("mtu")
             .and_then(|v| u16::try_from(v).ok())
             .unwrap_or(23);
+        let link = options
+            .get("link")
+            .and_then(|v| String::try_from(v.try_clone().ok()?).ok())
+            .unwrap_or_default();
+        info!("{device} subscribes over {link:?} with MTU {mtu}");
         let mut bridge = lock(&self.shared);
         let theirs = bridge
             .peripheral
