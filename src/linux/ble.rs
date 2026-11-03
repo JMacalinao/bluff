@@ -46,6 +46,7 @@ const APPEARANCE_KEYBOARD: u16 = 0x03C1;
 const SECURE_READ: &[&str] = &["encrypt-read"];
 const SECURE_NOTIFY: &[&str] = &["encrypt-read", "notify"];
 const RESUBSCRIBE: Duration = Duration::from_secs(10);
+const RESUME: Duration = Duration::from_secs(3);
 // At most one nudge per host in this long, so a host that never subscribes is not kicked forever.
 const NUDGE: Duration = Duration::from_secs(120);
 
@@ -722,6 +723,9 @@ impl Ble {
         ble.register().await?;
         ble.watch_hosts().await?;
         ble.update_advertising().await?;
+        if let Err(error) = ble.watch_resume().await {
+            warn!("not advertising again after suspend: {error}");
+        }
         info!("registered as {:?} on {}", inner.name, inner.adapter);
         Ok(ble)
     }
@@ -897,6 +901,33 @@ impl Ble {
                         }
                         bridge.subscription_changed();
                     }
+                }
+            }
+        });
+        Ok(())
+    }
+
+    async fn watch_resume(&self) -> zbus::Result<()> {
+        let rule = MatchRule::builder()
+            .msg_type(Type::Signal)
+            .sender("org.freedesktop.login1")?
+            .interface("org.freedesktop.login1.Manager")?
+            .member("PrepareForSleep")?
+            .build();
+        let mut signals = MessageStream::for_match_rule(rule, &self.inner.conn, None).await?;
+        let ble = self.clone();
+        tokio::spawn(async move {
+            while let Some(Ok(message)) = signals.next().await {
+                if !matches!(message.body().deserialize::<bool>(), Ok(false)) {
+                    continue;
+                }
+                // Some controllers stop advertising over suspend while BlueZ still counts the
+                // advertisement, so bonded hosts never see bluff to reconnect. BlueZ resumes the
+                // controller after logind reports the wake, hence the wait.
+                sleep(RESUME).await;
+                info!("resumed from suspend; advertising again");
+                if let Err(error) = ble.update_advertising().await {
+                    warn!("could not advertise again: {error}");
                 }
             }
         });
