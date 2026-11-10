@@ -192,6 +192,11 @@ git push origin main v0.2.0
 CI builds the Linux packages and the Windows zip and attaches them to a release
 for the tag. The tag must match the version in `Cargo.toml`.
 
+Forgejo mirrors the tag to [GitHub](https://github.com/JMacalinao/bluff), where
+`.github/workflows/release.yml` waits for the Forgejo release and copies its
+files to a GitHub release. To copy an existing release, run that workflow by
+hand with the tag.
+
 ## License
 
 Apache License 2.0; see [`LICENSE`](LICENSE). The fonts in `brandkit/fonts` keep
