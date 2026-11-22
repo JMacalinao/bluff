@@ -67,25 +67,34 @@ pub async fn run(args: Args) -> Result<(), Error> {
     Ok(())
 }
 
-/// Open input devices not seen before, and return so they reach the bridge.
+/// Open input devices not open yet, and hand them to the bridge.
 ///
-/// `known` maps each node's path to its inode: a node the kernel removed and created again,
-/// say when a dock resets over suspend, keeps its path but gets a new inode. A node that fails
-/// to open is remembered too, so it is not retried and warned about every `RESCAN`.
+/// `known` maps each node's path to its inode and whether it opened: a node the kernel removed
+/// and created again, say when a dock resets over suspend, keeps its path but gets a new inode.
+/// A node that failed to open is tried again every `RESCAN`, because udev grants the `input`
+/// group access a moment after the node appears, but its warning is logged once.
 fn open_new(
     shared: &Shared,
     events: &mpsc::UnboundedSender<bridge::Event>,
-    known: &mut HashMap<PathBuf, u64>,
+    known: &mut HashMap<PathBuf, (u64, bool)>,
 ) -> io::Result<()> {
     for info in discover()? {
         let Ok(inode) = fs::metadata(&info.path).map(|meta| meta.ino()) else {
             continue;
         };
-        if known.insert(info.path.clone(), inode) == Some(inode) {
-            continue;
-        }
+        let warned = match known.get(&info.path) {
+            Some(&(seen, opened)) if seen == inode => {
+                if opened {
+                    continue;
+                }
+                true
+            }
+            _ => false,
+        };
+        let path = info.path.clone();
         let name = info.name.clone();
         let opened = Device::open(info).and_then(|device| Ok((device.reader()?, device)));
+        known.insert(path, (inode, opened.is_ok()));
         match opened {
             Ok((reader, device)) => {
                 let touchpad = device.info().kind == Kind::Touchpad;
@@ -99,7 +108,8 @@ fn open_new(
                     events.clone(),
                 );
             }
-            Err(error) => warn!("could not open {name}: {error}"),
+            Err(error) if !warned => warn!("could not open {name}: {error}; trying again"),
+            Err(_) => {}
         }
     }
     Ok(())
