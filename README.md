@@ -173,7 +173,6 @@ confirm the cause first, run `sudo btmon` during a pairing attempt: it shows
 - One finger moves, two fingers scroll, click with two fingers to right-click.
   There is no tap-to-click and there are no iPadOS trackpad gestures: those
   need Apple's Magic Trackpad protocol. Use the Globe-key shortcuts instead.
-- Keyboards and mice plugged in after start are not picked up (Linux).
 - A device paired with bluff cannot also play audio through the laptop
   (Linux). bluff refuses its Bluetooth audio connections, because a device
   that comes back on audio after the laptop resumes does not reconnect to

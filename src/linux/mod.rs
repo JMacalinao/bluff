@@ -5,11 +5,17 @@ pub mod evdev;
 pub mod hosts;
 pub mod tray;
 
+use std::collections::HashMap;
+use std::fs;
 use std::io::{self, BufRead, Write};
+use std::os::unix::fs::MetadataExt;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use log::{info, warn};
 use tokio::sync::{mpsc, watch};
+use tokio::time::sleep;
 
 use crate::bridge::{self, Bridge};
 use crate::cli::{Args, Error};
@@ -17,6 +23,9 @@ use crate::input::{ABS_X, Input, Kind};
 use ble::{Ble, Confirm, Peripheral, Shared, lock};
 use evdev::{Device, discover};
 use hosts::{Hosts, default_store};
+
+/// How often to look for input devices plugged in, or created again, after start.
+const RESCAN: Duration = Duration::from_secs(2);
 
 pub async fn run(args: Args) -> Result<(), Error> {
     let (peripheral, dropped) = Peripheral::new(Hosts::load(default_store()));
@@ -34,7 +43,47 @@ pub async fn run(args: Args) -> Result<(), Error> {
         ble.set_pairing(Some(ask_terminal())).await?;
     }
     let (events, received) = mpsc::unbounded_channel();
+    let mut known = HashMap::new();
+    open_new(&shared, &events, &mut known)?;
+    tokio::spawn({
+        let shared = shared.clone();
+        let events = events.clone();
+        async move {
+            loop {
+                sleep(RESCAN).await;
+                if let Err(error) = open_new(&shared, &events, &mut known) {
+                    warn!("could not look for new input devices: {error}");
+                }
+            }
+        }
+    });
+    let (quit, quitting) = watch::channel(false);
+    tray::start(shared.clone(), ble, quit).await;
+    if args.pair {
+        info!("pick {:?} in the device's Bluetooth settings", args.name);
+    }
+    info!("press and release the hotkey to switch");
+    bridge::pump(&shared, received, quitting).await;
+    Ok(())
+}
+
+/// Open input devices not seen before, and return so they reach the bridge.
+///
+/// `known` maps each node's path to its inode: a node the kernel removed and created again,
+/// say when a dock resets over suspend, keeps its path but gets a new inode. A node that fails
+/// to open is remembered too, so it is not retried and warned about every `RESCAN`.
+fn open_new(
+    shared: &Shared,
+    events: &mpsc::UnboundedSender<bridge::Event>,
+    known: &mut HashMap<PathBuf, u64>,
+) -> io::Result<()> {
     for info in discover()? {
+        let Ok(inode) = fs::metadata(&info.path).map(|meta| meta.ino()) else {
+            continue;
+        };
+        if known.insert(info.path.clone(), inode) == Some(inode) {
+            continue;
+        }
         let name = info.name.clone();
         let opened = Device::open(info).and_then(|device| Ok((device.reader()?, device)));
         match opened {
@@ -46,20 +95,13 @@ pub async fn run(args: Args) -> Result<(), Error> {
                     0
                 };
                 reader(
-                    lock(&shared).add(Box::new(device), resolution),
+                    lock(shared).add(Box::new(device), resolution),
                     events.clone(),
                 );
             }
             Err(error) => warn!("could not open {name}: {error}"),
         }
     }
-    let (quit, quitting) = watch::channel(false);
-    tray::start(shared.clone(), ble, quit).await;
-    if args.pair {
-        info!("pick {:?} in the device's Bluetooth settings", args.name);
-    }
-    info!("press and release the hotkey to switch");
-    bridge::pump(&shared, received, quitting).await;
     Ok(())
 }
 

@@ -8,7 +8,7 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 use std::sync::Arc;
 
-use log::warn;
+use log::{info, warn};
 use tokio::io::unix::AsyncFd;
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -90,6 +90,7 @@ pub fn discover() -> io::Result<Vec<DeviceInfo>> {
 pub struct Device {
     info: DeviceInfo,
     file: Arc<File>,
+    gone: bool,
 }
 
 impl Device {
@@ -101,6 +102,7 @@ impl Device {
         Ok(Self {
             info,
             file: Arc::new(file),
+            gone: false,
         })
     }
 
@@ -166,13 +168,23 @@ impl Input for Device {
     }
 
     fn grab(&mut self, on: bool) {
+        if self.gone {
+            return;
+        }
         // SAFETY: EVIOCGRAB takes an int by value.
         if unsafe { libc::ioctl(self.file.as_raw_fd(), EVIOCGRAB, libc::c_int::from(on)) } < 0 {
+            let error = io::Error::last_os_error();
+            // The node was removed, say when a dock resets over suspend; the rescan opens its
+            // replacement. Reads do not always report that, so the grab does.
+            if error.raw_os_error() == Some(libc::ENODEV) {
+                info!("{} went away", self.info.name);
+                self.gone = true;
+                return;
+            }
             warn!(
-                "could not {} {}: {}",
+                "could not {} {}: {error}",
                 if on { "grab" } else { "release" },
                 self.info.name,
-                io::Error::last_os_error()
             );
         }
     }

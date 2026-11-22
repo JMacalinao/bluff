@@ -91,7 +91,7 @@ impl<P: Peripheral> Bridge<P> {
 
     /// Take input from `device`; `resolution` is a touchpad's units per mm.
     /// Returns the index to pass to `event` with the device's events.
-    pub fn add(&mut self, device: Box<dyn Input + Send>, resolution: i32) -> usize {
+    pub fn add(&mut self, mut device: Box<dyn Input + Send>, resolution: i32) -> usize {
         let index = self.devices.len();
         let info = device.info();
         if info.kind == Kind::Touchpad {
@@ -104,6 +104,10 @@ impl<P: Peripheral> Bridge<P> {
             info.name,
             info.path.display()
         );
+        // Plugged in while the device has control: grab it like the rest.
+        if self.active {
+            device.grab(true);
+        }
         self.devices.push(device);
         index
     }
@@ -347,6 +351,24 @@ mod tests {
         bridge.peripheral.connected = false;
         bridge.subscription_changed();
         assert!(!bridge.active && !grabbed.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn a_device_added_while_active_is_grabbed() {
+        let mut bridge = Bridge::new(FakePeripheral::default(), HashSet::from([1]), 10.0, 2.0);
+        bridge.active = true;
+        let info = DeviceInfo {
+            name: "kbd".into(),
+            path: PathBuf::from("/dev/null"),
+            kind: Kind::Keyboard,
+        };
+        let grabbed = Arc::new(AtomicBool::new(false));
+        let device = FakeDevice {
+            info,
+            grabbed: grabbed.clone(),
+        };
+        bridge.add(Box::new(device), 0);
+        assert!(grabbed.load(Ordering::Relaxed));
     }
 
     #[test]
