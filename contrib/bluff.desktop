@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=bluff
+GenericName=Bluetooth keyboard and mouse
+Comment=Use this laptop's keyboard and touchpad on a tablet or phone
+Icon=bluff
+# Starts the user service rather than a second copy of bluff; does nothing if it already runs.
+Exec=systemctl --user start bluff
+Terminal=false
+Categories=Utility;
+Keywords=bluetooth;keyboard;mouse;ipad;tablet;

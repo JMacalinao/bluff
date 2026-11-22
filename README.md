@@ -37,20 +37,26 @@ systemctl --user enable --now bluff
 ```
 
 On another distribution, unpack `bluff-*-x86_64-linux.tar.gz` and put
-`bluff` in `~/.local/bin` and `bluff.service` in `~/.config/systemd/user`.
-The release binaries need glibc 2.36 or later.
+`bluff` in `~/.local/bin`, `bluff.service` in `~/.config/systemd/user`,
+`bluff.desktop` in `~/.local/share/applications` and `bluff.svg` in
+`~/.local/share/icons/hicolor/scalable/apps`. The release binaries need
+glibc 2.36 or later.
 
 To build from source instead:
 
 ```sh
 cargo install --path . --root ~/.local
 install -Dm644 contrib/bluff.service ~/.config/systemd/user/bluff.service
+install -Dm644 contrib/bluff.desktop ~/.local/share/applications/bluff.desktop
+install -Dm644 brandkit/logo/bluff-icon.svg ~/.local/share/icons/hicolor/scalable/apps/bluff.svg
 systemctl --user enable --now bluff
 ```
 
 bluff puts an icon in the system tray (any StatusNotifierItem tray: KDE,
 Waybar, DankMaterialShell and others; GNOME needs the AppIndicator
 extension).
+If you quit bluff from the tray, start it again from your app launcher
+(the "bluff" entry) or with `systemctl --user start bluff`.
 
 1. Pick "Pair a new device…" in the tray menu. bluff becomes discoverable for
    two minutes.
@@ -142,8 +148,11 @@ sudo pacman -R bluff         # Arch
 rm -r ~/.local/state/bluff
 ```
 
-From the tarball or a source build, delete `~/.local/bin/bluff` and
-`~/.config/systemd/user/bluff.service` instead of removing a package.
+From the tarball or a source build, delete `~/.local/bin/bluff`,
+`~/.config/systemd/user/bluff.service`,
+`~/.local/share/applications/bluff.desktop` and
+`~/.local/share/icons/hicolor/scalable/apps/bluff.svg` instead of removing a
+package.
 
 On Windows, pick "Quit bluff" in the tray menu, delete its shortcut from
 `shell:startup`, then delete `bluff.exe` and `%LOCALAPPDATA%\bluff`.

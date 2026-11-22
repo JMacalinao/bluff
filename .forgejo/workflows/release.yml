@@ -60,8 +60,10 @@ jobs:
           for packager in deb rpm archlinux; do
             nfpm package -f contrib/nfpm.yaml -p "$packager" -t dist/
           done
+          cp brandkit/logo/bluff-icon.svg target/package/bluff.svg
           tar czf "dist/bluff-$VERSION-x86_64-linux.tar.gz" \
-            LICENSE -C target/release bluff -C ../../contrib bluff.service
+            LICENSE -C target/release bluff -C ../../contrib bluff.service bluff.desktop \
+            -C ../target/package bluff.svg
           zip -j "dist/bluff-$VERSION-x86_64-windows.zip" \
             target/x86_64-pc-windows-gnullvm/release/bluff.exe README.md LICENSE
           (cd dist && sha256sum * > SHA256SUMS)

@@ -13,5 +13,9 @@ contents:
     dst: /usr/bin/bluff
   - src: target/package/bluff.service
     dst: /usr/lib/systemd/user/bluff.service
+  - src: contrib/bluff.desktop
+    dst: /usr/share/applications/bluff.desktop
+  - src: brandkit/logo/bluff-icon.svg
+    dst: /usr/share/icons/hicolor/scalable/apps/bluff.svg
   - src: LICENSE
     dst: /usr/share/licenses/bluff/LICENSE
