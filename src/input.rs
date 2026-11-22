@@ -4,6 +4,8 @@ use std::fmt;
 use std::path::PathBuf;
 
 pub const EV_SYN: u16 = 0;
+/// The device's state was lost; bluff also sends it when a device goes away.
+pub const SYN_DROPPED: u16 = 3;
 pub const EV_KEY: u16 = 1;
 pub const EV_REL: u16 = 2;
 pub const EV_ABS: u16 = 3;

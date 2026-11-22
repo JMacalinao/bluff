@@ -10,7 +10,7 @@ use tokio::time::sleep_until;
 
 use crate::hid::{self, Keyboard, mouse_report};
 use crate::input::{
-    BTN_LEFT, EV_KEY, EV_REL, EV_SYN, Input, Kind, REL_HWHEEL, REL_WHEEL, REL_X, REL_Y,
+    BTN_LEFT, EV_KEY, EV_REL, EV_SYN, Input, Kind, REL_HWHEEL, REL_WHEEL, REL_X, REL_Y, SYN_DROPPED,
 };
 use crate::touchpad::Touchpad;
 
@@ -57,7 +57,8 @@ pub struct Bridge<P: Peripheral> {
     devices: Vec<Box<dyn Input + Send>>,
     touchpads: HashMap<usize, Touchpad>,
     clicks: HashMap<usize, u8>,
-    held: HashSet<u16>,
+    /// Keys held down, and the device each came from.
+    held: HashMap<u16, usize>,
     toggle_pending: bool,
     keyboard: Keyboard,
     buttons: u8,
@@ -79,7 +80,7 @@ impl<P: Peripheral> Bridge<P> {
             devices: Vec::new(),
             touchpads: HashMap::new(),
             clicks: HashMap::new(),
-            held: HashSet::new(),
+            held: HashMap::new(),
             toggle_pending: false,
             keyboard: Keyboard::default(),
             buttons: 0,
@@ -114,11 +115,14 @@ impl<P: Peripheral> Bridge<P> {
 
     pub fn event(&mut self, device: usize, type_: u16, code: u16, value: i32) {
         let pressed = value != 0;
+        if type_ == EV_SYN && code == SYN_DROPPED {
+            return self.dropped(device);
+        }
         if self.devices[device].info().kind == Kind::Keyboard {
             if type_ == EV_KEY && value == KEY_REPEAT {
                 self.repeat(code);
             } else if type_ == EV_KEY {
-                self.key(code, pressed);
+                self.key(device, code, pressed);
             }
             return;
         }
@@ -157,10 +161,10 @@ impl<P: Peripheral> Bridge<P> {
         }
     }
 
-    fn key(&mut self, code: u16, pressed: bool) {
+    fn key(&mut self, device: usize, code: u16, pressed: bool) {
         if pressed {
-            self.held.insert(code);
-            self.toggle_pending |= self.hotkey.is_subset(&self.held);
+            self.held.insert(code, device);
+            self.toggle_pending |= self.hotkey.iter().all(|key| self.held.contains_key(key));
         } else {
             self.held.remove(&code);
         }
@@ -171,6 +175,31 @@ impl<P: Peripheral> Bridge<P> {
         if self.toggle_pending && self.held.is_empty() {
             self.toggle_pending = false;
             self.set_active(!self.active);
+        }
+    }
+
+    /// Release the keys `device` held: it went away or lost events, so their releases never come.
+    ///
+    /// A key left held would stay down on the device and keep the hotkey from ever switching.
+    fn dropped(&mut self, device: usize) {
+        let keys: Vec<u16> = self
+            .held
+            .iter()
+            .filter(|&(_, &from)| from == device)
+            .map(|(&key, _)| key)
+            .collect();
+        if !keys.is_empty() {
+            info!(
+                "released {} key(s) held on {:?}",
+                keys.len(),
+                self.devices[device].info().name
+            );
+        }
+        for key in keys {
+            self.key(device, key, false);
+        }
+        if let Some(bit) = self.clicks.remove(&device) {
+            self.button(bit, false);
         }
     }
 
@@ -351,6 +380,30 @@ mod tests {
         bridge.peripheral.connected = false;
         bridge.subscription_changed();
         assert!(!bridge.active && !grabbed.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn a_key_held_on_a_vanished_keyboard_does_not_block_the_hotkey() {
+        let hotkey = HashSet::from([keycode("LEFTCTRL").unwrap(), keycode("LEFTALT").unwrap()]);
+        let mut bridge = Bridge::new(FakePeripheral::default(), hotkey, 10.0, 2.0);
+        bridge.peripheral.connected = true;
+        let mut keyboard = |name: &str| {
+            let info = DeviceInfo {
+                name: name.into(),
+                path: PathBuf::from("/dev/null"),
+                kind: Kind::Keyboard,
+            };
+            let grabbed = Arc::new(AtomicBool::new(false));
+            bridge.add(Box::new(FakeDevice { info, grabbed }), 0)
+        };
+        let (dock, laptop) = (keyboard("dock"), keyboard("laptop"));
+        bridge.event(dock, EV_KEY, keycode("A").unwrap(), 1);
+
+        press(&mut bridge, laptop, &["LEFTCTRL", "LEFTALT"]);
+        assert!(!bridge.active);
+
+        bridge.event(dock, EV_SYN, SYN_DROPPED, 0);
+        assert!(bridge.active);
     }
 
     #[test]

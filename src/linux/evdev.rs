@@ -14,8 +14,8 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use crate::bridge::Event;
 use crate::input::{
-    ABS_X, ABS_Y, BTN_LEFT, BTN_TOOL_FINGER, DeviceInfo, EV_ABS, EV_KEY, EV_REL, EV_REP, Input,
-    KEY_A, Kind, REL_X, REL_Y,
+    ABS_X, ABS_Y, BTN_LEFT, BTN_TOOL_FINGER, DeviceInfo, EV_ABS, EV_KEY, EV_REL, EV_REP, EV_SYN,
+    Input, KEY_A, Kind, REL_X, REL_Y, SYN_DROPPED,
 };
 
 const EVENT_SIZE: usize = 24; // struct input_event on 64-bit: timeval, u16 type, u16 code, i32 value
@@ -153,6 +153,8 @@ async fn read(fd: AsyncFd<Arc<File>>, name: String, index: usize, events: Unboun
                     }
                     Ok(Err(_)) => {
                         warn!("{name} went away");
+                        // Its key releases will never come; the bridge lets go of its held keys.
+                        let _ = events.send((index, EV_SYN, SYN_DROPPED, 0));
                         return;
                     }
                     Err(_would_block) => {}
