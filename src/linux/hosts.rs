@@ -110,6 +110,16 @@ impl Hosts {
         self.accepted.insert(path.to_string());
     }
 
+    /// Forget the host at `path`, whose BlueZ object is gone; return whether there was one.
+    pub fn remove(&mut self, path: &str) -> bool {
+        self.accepted.remove(path);
+        let removed = self.hosts.remove(path);
+        if let Some(host) = &removed {
+            info!("{:?} ({path}) is gone from BlueZ", host.name);
+        }
+        removed.is_some()
+    }
+
     /// Whether `path` is a host or a device the agent just let pair.
     pub fn owns(&self, path: &str) -> bool {
         self.hosts.contains_key(path) || self.accepted.contains(path)
@@ -238,6 +248,17 @@ pub(crate) mod tests {
             &props(&[("Address", "AA".into()), ("Paired", false.into())]),
         );
         assert_eq!(hosts.hosts.keys().collect::<Vec<_>>(), ["/d/a"]);
+    }
+
+    #[test]
+    fn a_removed_object_is_no_longer_a_host() {
+        let mut hosts = hosts("removed", "AA\n");
+        let paired = || props(&[("Address", "AA".into()), ("Paired", true.into())]);
+        hosts.update("/d/old", &paired());
+        hosts.update("/d/new", &paired());
+        assert!(hosts.remove("/d/old"));
+        assert!(!hosts.remove("/d/old"));
+        assert_eq!(hosts.hosts.keys().collect::<Vec<_>>(), ["/d/new"]);
     }
 
     #[test]

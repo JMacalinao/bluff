@@ -235,6 +235,16 @@ impl Peripheral {
         true
     }
 
+    /// Drop a host whose BlueZ object is gone; return whether it was one.
+    ///
+    /// Pairing an iPad again gives it a new object and removes the old one. Kept, the old one
+    /// shares the iPad's address and could become the target for input that then goes nowhere.
+    pub fn forget(&mut self, path: &str) -> bool {
+        self.keyboard.sockets.remove(path);
+        self.mouse.sockets.remove(path);
+        self.hosts.remove(path)
+    }
+
     /// Hosts on an LE link in `le`, or connected ones when that is unknown, with no keyboard
     /// socket and not nudged within `NUDGE`.
     fn unsubscribed(
@@ -922,6 +932,30 @@ impl Ble {
             .arg(0, DEVICE)?
             .build();
         let mut signals = MessageStream::for_match_rule(rule, conn, None).await?;
+        let rule = MatchRule::builder()
+            .msg_type(Type::Signal)
+            .sender(BLUEZ)?
+            .interface("org.freedesktop.DBus.ObjectManager")?
+            .member("InterfacesRemoved")?
+            .build();
+        let mut removals = MessageStream::for_match_rule(rule, conn, None).await?;
+        let shared = self.inner.shared.clone();
+        tokio::spawn(async move {
+            while let Some(Ok(message)) = removals.next().await {
+                let Ok((object, interfaces)) = message
+                    .body()
+                    .deserialize::<(OwnedObjectPath, Vec<String>)>()
+                else {
+                    continue;
+                };
+                if interfaces.iter().any(|i| i == DEVICE) {
+                    let mut bridge = lock(&shared);
+                    if bridge.peripheral.forget(object.as_str()) {
+                        bridge.subscription_changed();
+                    }
+                }
+            }
+        });
         let objects = ObjectManagerProxy::builder(conn)
             .destination(BLUEZ)?
             .path("/")?
