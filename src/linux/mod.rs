@@ -36,7 +36,7 @@ pub async fn run(args: Args) -> Result<(), Error> {
         args.mm_per_tick,
     );
     let shared: Shared = Arc::new(Mutex::new(bridge));
-    let ble = Ble::start(shared.clone(), dropped, &args.name, &args.adapter)
+    let ble = Ble::start(shared.clone(), dropped, &args.name, args.adapter.as_deref())
         .await
         .map_err(|error| format!("could not register with BlueZ: {error}"))?;
     if args.pair {
@@ -58,13 +58,17 @@ pub async fn run(args: Args) -> Result<(), Error> {
         }
     });
     let (quit, quitting) = watch::channel(false);
+    let removed = ble.clone();
     tray::start(shared.clone(), ble, quit).await;
     if args.pair {
         info!("pick {:?} in the device's Bluetooth settings", args.name);
     }
     info!("press and release the hotkey to switch");
-    bridge::pump(&shared, received, quitting).await;
-    Ok(())
+    tokio::select! {
+        () = bridge::pump(&shared, received, quitting) => Ok(()),
+        // A failure exit makes systemd start bluff again, on whichever adapter BlueZ has then.
+        () = removed.adapter_removed() => Err("the Bluetooth adapter went away".into()),
+    }
 }
 
 /// Open input devices not open yet, and hand them to the bridge.

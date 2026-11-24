@@ -33,6 +33,7 @@ pub type Confirm = Arc<dyn Fn(String) -> Pin<Box<dyn Future<Output = bool> + Sen
 
 const BLUEZ: &str = "org.bluez";
 const DEVICE: &str = "org.bluez.Device1";
+const ADAPTER: &str = "org.bluez.Adapter1";
 const GATT_MANAGER: &str = "org.bluez.GattManager1";
 const ADVERTISING_MANAGER: &str = "org.bluez.LEAdvertisingManager1";
 const ROOT: &str = "/org/bluff/gatt";
@@ -692,6 +693,56 @@ struct Inner {
     advertising: tokio::sync::Mutex<bool>,
     registration: tokio::sync::Mutex<Registration>,
     nudged: Mutex<HashMap<String, Instant>>,
+    gone: tokio::sync::watch::Receiver<bool>,
+}
+
+/// The first adapter BlueZ lists, as an object path.
+async fn first_adapter(conn: &Connection) -> zbus::Result<String> {
+    let objects = ObjectManagerProxy::builder(conn)
+        .destination(BLUEZ)?
+        .path("/")?
+        .build()
+        .await?
+        .get_managed_objects()
+        .await?;
+    objects
+        .into_iter()
+        .filter(|(_, interfaces)| interfaces.contains_key(ADAPTER))
+        .map(|(object, _)| object.to_string())
+        .min()
+        .ok_or_else(|| zbus::Error::Failure("no Bluetooth adapter".into()))
+}
+
+/// Turns true when BlueZ removes `adapter`, such as when the kernel resets a controller that hung
+/// after a resume and it comes back under a new name.
+async fn watch_removal(
+    conn: &Connection,
+    adapter: &str,
+) -> zbus::Result<tokio::sync::watch::Receiver<bool>> {
+    let rule = MatchRule::builder()
+        .msg_type(Type::Signal)
+        .sender(BLUEZ)?
+        .interface("org.freedesktop.DBus.ObjectManager")?
+        .member("InterfacesRemoved")?
+        .build();
+    let mut signals = MessageStream::for_match_rule(rule, conn, None).await?;
+    let (removed, gone) = tokio::sync::watch::channel(false);
+    let adapter = adapter.to_string();
+    tokio::spawn(async move {
+        while let Some(Ok(message)) = signals.next().await {
+            let Ok((object, interfaces)) = message
+                .body()
+                .deserialize::<(OwnedObjectPath, Vec<String>)>()
+            else {
+                continue;
+            };
+            if object.as_str() == adapter && interfaces.iter().any(|i| i == ADAPTER) {
+                removed.send_replace(true);
+                return;
+            }
+        }
+    });
+    Ok(gone)
 }
 
 impl Ble {
@@ -699,18 +750,25 @@ impl Ble {
         shared: Shared,
         dropped: UnboundedReceiver<Dropped>,
         name: &str,
-        adapter: &str,
+        adapter: Option<&str>,
     ) -> zbus::Result<Self> {
         let conn = Connection::system().await?;
+        let adapter = match adapter {
+            Some(adapter) => format!("/org/bluez/{adapter}"),
+            None => first_adapter(&conn).await?,
+        };
+        // Watched before anything is registered, so a removal cannot slip in between.
+        let gone = watch_removal(&conn, &adapter).await?;
         let ble = Self {
             inner: Arc::new(Inner {
                 conn,
                 shared,
                 name: name.to_string(),
-                adapter: format!("/org/bluez/{adapter}"),
+                adapter,
                 advertising: tokio::sync::Mutex::new(false),
                 registration: tokio::sync::Mutex::default(),
                 nudged: Mutex::default(),
+                gone,
             }),
         };
         ble.export().await?;
@@ -734,7 +792,7 @@ impl Ble {
             .await?;
         adapter
             .set(
-                InterfaceName::from_static_str_unchecked("org.bluez.Adapter1"),
+                InterfaceName::from_static_str_unchecked(ADAPTER),
                 "Powered",
                 Value::from(true),
             )
@@ -747,6 +805,12 @@ impl Ble {
         }
         info!("registered as {:?} on {}", inner.name, inner.adapter);
         Ok(ble)
+    }
+
+    /// Resolve once BlueZ removes the adapter bluff registered on.
+    pub async fn adapter_removed(&self) {
+        let mut gone = self.inner.gone.clone();
+        let _ = gone.wait_for(|&gone| gone).await;
     }
 
     async fn call<B>(

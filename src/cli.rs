@@ -15,8 +15,9 @@ pub struct Args {
     /// name the device shows when pairing
     #[arg(long, default_value = "bluff")]
     pub name: String,
-    #[arg(long, default_value = "hci0")]
-    pub adapter: String,
+    /// Bluetooth adapter, such as hci0 [default: the first one]
+    #[arg(long)]
+    pub adapter: Option<String>,
     /// be discoverable and confirm pairing on this terminal
     #[arg(long)]
     pub pair: bool,
